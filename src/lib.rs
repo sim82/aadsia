@@ -1,5 +1,5 @@
 #[derive(Debug, PartialEq)]
-struct KdNode<const N: usize> {
+pub struct KdNode<const N: usize> {
     point: [f32; N],
     left: Option<Box<KdNode<N>>>,
     right: Option<Box<KdNode<N>>>,
@@ -103,6 +103,45 @@ impl<const N: usize> KdNode<N> {
     }
 }
 
+pub fn partition<const N: usize>(
+    points: &[[f32; N]],
+    level: usize,
+) -> ([f32; N], Vec<[f32; N]>, Vec<[f32; N]>) {
+    assert!(!points.is_empty());
+    if points.len() == 1 {
+        return (points[0], Default::default(), Default::default());
+    }
+    let mut points = points.iter().cloned().collect::<Vec<_>>();
+    points.sort_by(|point1, point2| {
+        get_point_key(point1, level)
+            .partial_cmp(&get_point_key(point2, level))
+            .unwrap()
+    });
+
+    if points.len() == 2 {
+        return (points[1], vec![points[0]], Default::default());
+    }
+    let m = points.len() / 2;
+    (
+        points[m],
+        points[..m].iter().cloned().collect(),
+        points[m + 1..].iter().cloned().collect(),
+    )
+}
+
+pub fn construct_balanced<const N: usize>(points: &[[f32; N]], level: usize) -> Option<KdNode<N>> {
+    if points.is_empty() {
+        None
+    } else if points.len() == 1 {
+        Some(KdNode::new(points[0], None, None, level))
+    } else {
+        let (median, mut left, mut right) = partition(points, level);
+        let left_tree = construct_balanced(&mut left[..], level + 1);
+        let right_tree = construct_balanced(&mut right, level + 1);
+        Some(KdNode::new(median, left_tree, right_tree, level))
+    }
+}
+
 struct KdTree<const N: usize> {
     root: KdNode<N>,
     k: usize,
@@ -194,5 +233,22 @@ mod tests {
         assert_eq!(root, target1);
         root.insert(&[2.5, -3.0], 0);
         assert_eq!(root, target2);
+    }
+
+    #[test]
+    fn test_partition() {
+        let points = [
+            [0.0, 5.0],
+            [1.0, -1.0],
+            [-1.0, 6.0],
+            [-0.5, 0.0],
+            [2.0, 5.0],
+            [2.5, 3.0],
+            [-1.0, 1.0],
+            [-1.5, -2.0],
+        ];
+
+        let (median, left, right) = partition(&points, 0);
+        println!("{:?} {:?} {:?}", median, left, right);
     }
 }
