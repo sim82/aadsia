@@ -52,6 +52,23 @@ impl<const N: usize> KdNode<N> {
             self.point
         )
     }
+    pub fn dump_rec(&self, p: &str) {
+        println!(
+            "{}{}level: {}, point:{:?}",
+            std::iter::repeat(' ').take(self.level).collect::<String>(),
+            p,
+            self.level,
+            self.point
+        );
+
+        if let Some(ref left) = self.left {
+            left.dump_rec("l ");
+        }
+        if let Some(ref right) = self.right {
+            right.dump_rec("r ");
+        }
+    }
+
     pub fn insert(&mut self, new_point: &[f32; N], level: usize) -> &KdNode<N> {
         if self.point == *new_point {
             self
@@ -238,11 +255,11 @@ mod tests {
     #[test]
     fn test_partition() {
         let points = [
-            [0.0, 5.0],
             [1.0, -1.0],
             [-1.0, 6.0],
             [-0.5, 0.0],
             [2.0, 5.0],
+            [0.0, 5.0],
             [2.5, 3.0],
             [-1.0, 1.0],
             [-1.5, -2.0],
@@ -250,5 +267,23 @@ mod tests {
 
         let (median, left, right) = partition(&points, 0);
         println!("{:?} {:?} {:?}", median, left, right);
+    }
+
+    #[test]
+    fn test_construct_balanced() {
+        let points = [
+            [1.0, -1.0],
+            [-1.0, 6.0],
+            [-0.5, 0.0],
+            [2.0, 5.0],
+            [0.0, 5.0],
+            [2.5, 3.0],
+            [-1.0, 1.0],
+            [-1.5, -2.0],
+        ];
+
+        let tree = construct_balanced(&points, 0);
+        tree.unwrap().dump_rec("");
+        // println!("{:?}", tree);
     }
 }
