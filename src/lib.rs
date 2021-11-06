@@ -117,116 +117,78 @@ mod tests {
     use super::*;
     #[test]
     fn it_works() {
-        let mut root = KdNode::<2> {
-            point: [0.0, 5.0],
-            left: Some(Box::new(KdNode::<2> {
-                point: [-1.0, 6.0],
-                left: Some(Box::new(KdNode::<2> {
-                    point: [-1.0, 1.0],
-                    left: None,
-                    right: Some(Box::new(KdNode::<2> {
-                        point: [-0.5, 0.0],
-                        left: None,
-                        right: None,
-                        level: 3,
-                    })),
-                    level: 2,
-                })),
-                right: None,
-                level: 1,
-            })),
-            right: Some(Box::new(KdNode::<2> {
-                point: [1.0, -1.0],
-                left: Some(Box::new(KdNode::<2> {
-                    point: [2.0, -5.0],
-                    left: None,
-                    right: None,
-                    level: 2,
-                })),
-                right: None,
-                level: 1,
-            })),
-            level: 0,
-        };
+        type KdNode2 = KdNode<2>;
 
-        let target1 = KdNode::<2> {
-            point: [0.0, 5.0],
-            left: Some(Box::new(KdNode::<2> {
-                point: [-1.0, 6.0],
-                left: Some(Box::new(KdNode::<2> {
-                    point: [-1.0, 1.0],
-                    left: Some(Box::new(KdNode::<2> {
-                        point: [-1.5, -2.0],
-                        left: None,
-                        right: None,
-                        level: 3,
-                    })),
-                    right: Some(Box::new(KdNode::<2> {
-                        point: [-0.5, 0.0],
-                        left: None,
-                        right: None,
-                        level: 3,
-                    })),
-                    level: 2,
-                })),
-                right: None,
-                level: 1,
-            })),
-            right: Some(Box::new(KdNode::<2> {
-                point: [1.0, -1.0],
-                left: Some(Box::new(KdNode::<2> {
-                    point: [2.0, -5.0],
-                    left: None,
-                    right: None,
-                    level: 2,
-                })),
-                right: None,
-                level: 1,
-            })),
-            level: 0,
-        };
+        let mut root = KdNode2::new(
+            [0.0, 5.0],
+            Some(KdNode2::new(
+                [-1.0, 6.0],
+                Some(KdNode2::new(
+                    [-1.0, 1.0],
+                    None,
+                    Some(KdNode2::new([-0.5, 0.0], None, None, 3)),
+                    2,
+                )),
+                None,
+                1,
+            )),
+            Some(KdNode2::new(
+                [1.0, -1.0],
+                Some(KdNode2::new([2.0, -5.0], None, None, 2)),
+                None,
+                1,
+            )),
+            0,
+        );
 
-        let target2 = KdNode::<2> {
-            point: [0.0, 5.0],
-            left: Some(Box::new(KdNode::<2> {
-                point: [-1.0, 6.0],
-                left: Some(Box::new(KdNode::<2> {
-                    point: [-1.0, 1.0],
-                    left: Some(Box::new(KdNode::<2> {
-                        point: [-1.5, -2.0],
-                        left: None,
-                        right: None,
-                        level: 3,
-                    })),
-                    right: Some(Box::new(KdNode::<2> {
-                        point: [-0.5, 0.0],
-                        left: None,
-                        right: None,
-                        level: 3,
-                    })),
-                    level: 2,
-                })),
-                right: None,
-                level: 1,
-            })),
-            right: Some(Box::new(KdNode::<2> {
-                point: [1.0, -1.0],
-                left: Some(Box::new(KdNode::<2> {
-                    point: [2.0, -5.0],
-                    left: None,
-                    right: Some(Box::new(KdNode::<2> {
-                        point: [2.5, -3.0],
-                        left: None,
-                        right: None,
-                        level: 3,
-                    })),
-                    level: 2,
-                })),
-                right: None,
-                level: 1,
-            })),
-            level: 0,
-        };
+        let target1 = KdNode2::new(
+            [0.0, 5.0],
+            Some(KdNode2::new(
+                [-1.0, 6.0],
+                Some(KdNode2::new(
+                    [-1.0, 1.0],
+                    Some(KdNode2::new([-1.5, -2.0], None, None, 3)),
+                    Some(KdNode2::new([-0.5, 0.0], None, None, 3)),
+                    2,
+                )),
+                None,
+                1,
+            )),
+            Some(KdNode2::new(
+                [1.0, -1.0],
+                Some(KdNode2::new([2.0, -5.0], None, None, 2)),
+                None,
+                1,
+            )),
+            0,
+        );
+
+        let target2 = KdNode2::new(
+            [0.0, 5.0],
+            Some(KdNode2::new(
+                [-1.0, 6.0],
+                Some(KdNode2::new(
+                    [-1.0, 1.0],
+                    Some(KdNode2::new([-1.5, -2.0], None, None, 3)),
+                    Some(KdNode2::new([-0.5, 0.0], None, None, 3)),
+                    2,
+                )),
+                None,
+                1,
+            )),
+            Some(KdNode2::new(
+                [1.0, -1.0],
+                Some(KdNode2::new(
+                    [2.0, -5.0],
+                    None,
+                    Some(KdNode2::new([2.5, -3.0], None, None, 3)),
+                    2,
+                )),
+                None,
+                1,
+            )),
+            0,
+        );
 
         root.insert(&[-1.5, -2.0], 0);
         assert_eq!(root, target1);
