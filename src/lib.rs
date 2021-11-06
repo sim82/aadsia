@@ -121,14 +121,13 @@ impl<const N: usize> KdNode<N> {
 }
 
 pub fn partition<const N: usize>(
-    points: &[[f32; N]],
+    points: &mut [[f32; N]],
     level: usize,
-) -> ([f32; N], Vec<[f32; N]>, Vec<[f32; N]>) {
+) -> ([f32; N], &mut [[f32; N]], &mut [[f32; N]]) {
     assert!(!points.is_empty());
     if points.len() == 1 {
         return (points[0], Default::default(), Default::default());
     }
-    let mut points = points.iter().cloned().collect::<Vec<_>>();
     points.sort_by(|point1, point2| {
         get_point_key(point1, level)
             .partial_cmp(&get_point_key(point2, level))
@@ -136,25 +135,26 @@ pub fn partition<const N: usize>(
     });
 
     if points.len() == 2 {
-        return (points[1], vec![points[0]], Default::default());
+        return (points[1], &mut points[0..0], Default::default());
     }
     let m = points.len() / 2;
-    (
-        points[m],
-        points[..m].iter().cloned().collect(),
-        points[m + 1..].iter().cloned().collect(),
-    )
+    let (left, right) = points.split_at_mut(m);
+    let (m, right) = right.split_at_mut(1);
+    (m[0], left, right)
 }
 
-pub fn construct_balanced<const N: usize>(points: &[[f32; N]], level: usize) -> Option<KdNode<N>> {
+pub fn construct_balanced<const N: usize>(
+    points: &mut [[f32; N]],
+    level: usize,
+) -> Option<KdNode<N>> {
     if points.is_empty() {
         None
     } else if points.len() == 1 {
         Some(KdNode::new(points[0], None, None, level))
     } else {
-        let (median, mut left, mut right) = partition(points, level);
-        let left_tree = construct_balanced(&mut left[..], level + 1);
-        let right_tree = construct_balanced(&mut right, level + 1);
+        let (median, left, right) = partition(points, level);
+        let left_tree = construct_balanced(left, level + 1);
+        let right_tree = construct_balanced(right, level + 1);
         Some(KdNode::new(median, left_tree, right_tree, level))
     }
 }
@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn test_partition() {
-        let points = [
+        let mut points = [
             [1.0, -1.0],
             [-1.0, 6.0],
             [-0.5, 0.0],
@@ -265,13 +265,13 @@ mod tests {
             [-1.5, -2.0],
         ];
 
-        let (median, left, right) = partition(&points, 0);
+        let (median, left, right) = partition(&mut points, 0);
         println!("{:?} {:?} {:?}", median, left, right);
     }
 
     #[test]
     fn test_construct_balanced() {
-        let points = [
+        let mut points = [
             [1.0, -1.0],
             [-1.0, 6.0],
             [-0.5, 0.0],
@@ -282,7 +282,7 @@ mod tests {
             [-1.5, -2.0],
         ];
 
-        let tree = construct_balanced(&points, 0);
+        let tree = construct_balanced(&mut points, 0);
         tree.unwrap().dump_rec("");
         // println!("{:?}", tree);
     }
