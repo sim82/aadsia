@@ -1,10 +1,10 @@
+use std::ops::Index;
+
 use arrayvec::ArrayVec;
 
 enum SsNodeLinks<const K: usize, const M: usize> {
     Inner(ArrayVec<Box<SsNode<K, M>>, M>),
     Leaf(ArrayVec<[f32; K], M>),
-    SplitInner(Vec<Box<SsNode<K, M>>>),
-    SplitLeaf(Vec<[f32; K]>),
 }
 
 struct SsNode<const K: usize, const M: usize> {
@@ -75,25 +75,41 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
     pub fn update_bounding_envelope(&mut self) -> Option<&Self> {
         None
     }
-    pub fn insert(&mut self, point: &[f32; K]) -> Option<&Self> {
+    pub fn insert(&mut self, point: &[f32; K]) -> Option<(Box<Self>, Box<Self>)> {
         match &mut self.links {
             SsNodeLinks::Leaf(points) => {
                 if points.iter().any(|p| *p == *point) {
                     return None;
                 }
 
-                if points.len() < M - 2 {
+                if points.len() < M {
                     points.push(*point);
                     self.update_bounding_envelope();
                     return None;
                 } else {
-                    self.links = SsNodeLinks::SplitLeaf(
-                        points.drain(..).chain(std::iter::once(*point)).collect(),
-                    )
+                    let mut nodes_to_split: Vec<[f32; K]> =
+                        points.drain(..).chain(std::iter::once(*point)).collect();
+
+                    let split_index = find_point_split_index(&mut nodes_to_split);
                 }
             }
 
-            SsNodeLinks::Inner(_) => todo!(),
+            SsNodeLinks::Inner(children) => {
+                let closest_child_index = find_closest_child_index(children, point);
+                if let Some((new_child_1, new_child_2)) =
+                    children[closest_child_index].insert(point)
+                {
+                    children.remove(closest_child_index);
+
+                    if children.len() <= M - 2 {
+                        children.push(new_child_1);
+                        children.push(new_child_2);
+                    } else {
+                    }
+                } else {
+                    self.update_bounding_envelope();
+                }
+            }
             _ => panic!("split link types not allowed"),
         }
         None
@@ -141,6 +157,77 @@ fn find_closest_child<'a, const K: usize, const M: usize>(
         }
     }
     cur_min.unwrap()
+}
+fn find_closest_child_index<const K: usize, const M: usize>(
+    children: &[Box<SsNode<K, M>>],
+    target: &[f32; K],
+) -> usize {
+    let mut min_dist = f32::MAX;
+    let mut cur_min = None;
+    for (i, child) in children.iter().enumerate() {
+        let d = distance(&child.centroid, target);
+        if d < min_dist {
+            min_dist = d;
+            cur_min = Some(i);
+        }
+    }
+    cur_min.unwrap()
+}
+
+fn variance_along_direction<const K: usize>(points: &[[f32; K]], direction_index: usize) -> f32 {
+    assert!(!points.is_empty());
+    let count = points.len() as f32;
+    let sum = points
+        .iter()
+        .map(|point| point[direction_index])
+        .sum::<f32>();
+
+    let mean = sum / count;
+
+    points
+        .iter()
+        .map(|point| {
+            let diff = mean - point[direction_index];
+
+            diff * diff
+        })
+        .sum::<f32>()
+        / count
+}
+
+fn direction_of_max_variance<const K: usize>(points: &[[f32; K]]) -> usize {
+    let mut max_variance = 0.0;
+    let mut direction_index = 0;
+    for i in 0..K {
+        let variance = variance_along_direction(points, i);
+        if variance > max_variance {
+            max_variance = variance;
+            direction_index = i;
+        }
+    }
+    direction_index
+}
+
+fn find_point_split_index<const K: usize>(points: &mut [[f32; K]]) -> usize {
+    let coordinate_index = direction_of_max_variance(points);
+    points.sort_by(|p1, p2| {
+        p1[coordinate_index]
+            .partial_cmp(&p2[coordinate_index])
+            .unwrap()
+    });
+    let mut min_variance = f32::INFINITY;
+    const M_LOWER: usize = 2;
+    let mut split_index = M_LOWER;
+    for i in M_LOWER..=(points.len() - M_LOWER) {
+        let variance1 = variance_along_direction(&points[..i], coordinate_index);
+        let variance2 = variance_along_direction(&points[i..], coordinate_index);
+        let variance = variance1 + variance2;
+        if variance < min_variance {
+            min_variance = variance;
+            split_index = i;
+        }
+    }
+    split_index
 }
 
 #[test]
