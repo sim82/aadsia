@@ -7,7 +7,7 @@ enum SsNodeLinks<const K: usize, const M: usize> {
     Leaf(ArrayVec<[f32; K], M>),
 }
 
-struct SsNode<const K: usize, const M: usize> {
+pub struct SsNode<const K: usize, const M: usize> {
     centroid: [f32; K],
     radius: f32,
     links: SsNodeLinks<K, M>,
@@ -72,8 +72,13 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
         }
     }
 
-    pub fn update_bounding_envelope(&mut self) -> Option<&Self> {
-        None
+    pub fn update_bounding_envelope(&mut self) {
+        let (centroid, radius) = match &self.links {
+            SsNodeLinks::Inner(nodes) => inner::centroid_and_radius(nodes),
+            SsNodeLinks::Leaf(points) => leaf::centroid_and_radius(points),
+        };
+        self.centroid = centroid;
+        self.radius = radius;
     }
     pub fn insert(&mut self, point: &[f32; K]) -> Option<(Box<Self>, Box<Self>)> {
         match &mut self.links {
@@ -90,7 +95,26 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                     let mut nodes_to_split: Vec<[f32; K]> =
                         points.drain(..).chain(std::iter::once(*point)).collect();
 
-                    let split_index = find_point_split_index(&mut nodes_to_split);
+                    let split_index = leaf::find_split_index(&mut nodes_to_split);
+                    let points1: ArrayVec<_, M> =
+                        nodes_to_split[..split_index].iter().cloned().collect();
+                    let (centroid1, radius1) = leaf::centroid_and_radius(&points1);
+
+                    let points2: ArrayVec<_, M> =
+                        nodes_to_split[split_index..].iter().cloned().collect();
+                    let (centroid2, radius2) = leaf::centroid_and_radius(&points2);
+
+                    let new_node1 = Box::new(Self {
+                        centroid: centroid1,
+                        radius: radius1,
+                        links: SsNodeLinks::Leaf(points1),
+                    });
+                    let new_node2 = Box::new(Self {
+                        centroid: centroid2,
+                        radius: radius2,
+                        links: SsNodeLinks::Leaf(points2),
+                    });
+                    return Some((new_node1, new_node2));
                 }
             }
 
@@ -101,10 +125,35 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                 {
                     children.remove(closest_child_index);
 
-                    if children.len() <= M - 2 {
+                    if children.len() < M - 1 {
                         children.push(new_child_1);
                         children.push(new_child_2);
                     } else {
+                        let mut nodes_to_split: Vec<_> = children
+                            .drain(..)
+                            .chain(std::iter::once(new_child_1))
+                            .chain(std::iter::once(new_child_2))
+                            .collect();
+
+                        let split_index = inner::find_split_index(&mut nodes_to_split);
+
+                        let points2: ArrayVec<_, M> = nodes_to_split.drain(split_index..).collect();
+                        let (centroid2, radius2) = inner::centroid_and_radius(&points2);
+
+                        let points1: ArrayVec<_, M> = nodes_to_split.drain(..split_index).collect();
+                        let (centroid1, radius1) = inner::centroid_and_radius(&points1);
+
+                        let new_node1 = Box::new(Self {
+                            centroid: centroid1,
+                            radius: radius1,
+                            links: SsNodeLinks::Inner(points1),
+                        });
+                        let new_node2 = Box::new(Self {
+                            centroid: centroid2,
+                            radius: radius2,
+                            links: SsNodeLinks::Inner(points2),
+                        });
+                        return Some((new_node1, new_node2));
                     }
                 } else {
                     self.update_bounding_envelope();
@@ -174,62 +223,176 @@ fn find_closest_child_index<const K: usize, const M: usize>(
     cur_min.unwrap()
 }
 
-fn variance_along_direction<const K: usize>(points: &[[f32; K]], direction_index: usize) -> f32 {
-    assert!(!points.is_empty());
-    let count = points.len() as f32;
-    let sum = points
-        .iter()
-        .map(|point| point[direction_index])
-        .sum::<f32>();
-
-    let mean = sum / count;
-
-    points
-        .iter()
-        .map(|point| {
-            let diff = mean - point[direction_index];
-
-            diff * diff
-        })
-        .sum::<f32>()
-        / count
-}
-
-fn direction_of_max_variance<const K: usize>(points: &[[f32; K]]) -> usize {
-    let mut max_variance = 0.0;
-    let mut direction_index = 0;
-    for i in 0..K {
-        let variance = variance_along_direction(points, i);
-        if variance > max_variance {
-            max_variance = variance;
-            direction_index = i;
-        }
+mod leaf {
+    pub fn mean_along_direction<const K: usize>(
+        points: &[[f32; K]],
+        direction_index: usize,
+    ) -> f32 {
+        assert!(!points.is_empty());
+        let count = points.len() as f32;
+        let sum = points
+            .iter()
+            .map(|point| point[direction_index])
+            .sum::<f32>();
+        sum / count
     }
-    direction_index
-}
 
-fn find_point_split_index<const K: usize>(points: &mut [[f32; K]]) -> usize {
-    let coordinate_index = direction_of_max_variance(points);
-    points.sort_by(|p1, p2| {
-        p1[coordinate_index]
-            .partial_cmp(&p2[coordinate_index])
-            .unwrap()
-    });
-    let mut min_variance = f32::INFINITY;
-    const M_LOWER: usize = 2;
-    let mut split_index = M_LOWER;
-    for i in M_LOWER..=(points.len() - M_LOWER) {
-        let variance1 = variance_along_direction(&points[..i], coordinate_index);
-        let variance2 = variance_along_direction(&points[i..], coordinate_index);
-        let variance = variance1 + variance2;
-        if variance < min_variance {
-            min_variance = variance;
-            split_index = i;
-        }
+    pub fn variance_along_direction<const K: usize>(
+        points: &[[f32; K]],
+        direction_index: usize,
+    ) -> f32 {
+        assert!(!points.is_empty());
+        let mean = mean_along_direction(points, direction_index);
+        let count = points.len() as f32;
+        points
+            .iter()
+            .map(|point| {
+                let diff = mean - point[direction_index];
+
+                diff * diff
+            })
+            .sum::<f32>()
+            / count
     }
-    split_index
-}
 
+    pub fn direction_of_max_variance<const K: usize>(points: &[[f32; K]]) -> usize {
+        let mut max_variance = 0.0;
+        let mut direction_index = 0;
+        for i in 0..K {
+            let variance = variance_along_direction(points, i);
+            if variance > max_variance {
+                max_variance = variance;
+                direction_index = i;
+            }
+        }
+        direction_index
+    }
+
+    pub fn find_split_index<const K: usize>(points: &mut [[f32; K]]) -> usize {
+        let coordinate_index = direction_of_max_variance(points);
+        points.sort_by(|p1, p2| {
+            p1[coordinate_index]
+                .partial_cmp(&p2[coordinate_index])
+                .unwrap()
+        });
+        let mut min_variance = f32::INFINITY;
+        const M_LOWER: usize = 2;
+        let mut split_index = M_LOWER;
+        for i in M_LOWER..=(points.len() - M_LOWER) {
+            let variance1 = variance_along_direction(&points[..i], coordinate_index);
+            let variance2 = variance_along_direction(&points[i..], coordinate_index);
+            let variance = variance1 + variance2;
+            if variance < min_variance {
+                min_variance = variance;
+                split_index = i;
+            }
+        }
+        split_index
+    }
+
+    pub fn centroid_and_radius<const K: usize>(points: &[[f32; K]]) -> ([f32; K], f32) {
+        let mut centroid = [0f32; K];
+        for i in 0..K {
+            centroid[i] = mean_along_direction(points, i);
+        }
+
+        let radius = points
+            .iter()
+            .map(|point| super::distance(&centroid, point))
+            .max_by(|d1, d2| d1.partial_cmp(d2).unwrap())
+            .unwrap();
+        (centroid, radius)
+    }
+}
+mod inner {
+    use super::{distance, SsNode};
+
+    pub fn find_split_index<const K: usize, const M: usize>(
+        nodes: &mut [Box<SsNode<K, M>>],
+    ) -> usize {
+        let coordinate_index = direction_of_max_variance(nodes);
+        nodes.sort_by(|p1, p2| {
+            p1.centroid[coordinate_index]
+                .partial_cmp(&p2.centroid[coordinate_index])
+                .unwrap()
+        });
+        let mut min_variance = f32::INFINITY;
+        const M_LOWER: usize = 2;
+        let mut split_index = M_LOWER;
+        for i in M_LOWER..=(nodes.len() - M_LOWER) {
+            let variance1 = variance_along_direction(&nodes[..i], coordinate_index);
+            let variance2 = variance_along_direction(&nodes[i..], coordinate_index);
+            let variance = variance1 + variance2;
+            if variance < min_variance {
+                min_variance = variance;
+                split_index = i;
+            }
+        }
+        split_index
+    }
+
+    pub fn centroid_and_radius<const K: usize, const M: usize>(
+        nodes: &[Box<SsNode<K, M>>],
+    ) -> ([f32; K], f32) {
+        let mut centroid = [0f32; K];
+        for i in 0..K {
+            centroid[i] = mean_along_direction(nodes, i);
+        }
+
+        let radius = nodes
+            .iter()
+            .map(|node| distance(&centroid, &node.centroid) + node.radius)
+            .max_by(|d1, d2| d1.partial_cmp(d2).unwrap())
+            .unwrap();
+        (centroid, radius)
+    }
+
+    pub fn mean_along_direction<const K: usize, const M: usize>(
+        points: &[Box<SsNode<K, M>>],
+        direction_index: usize,
+    ) -> f32 {
+        assert!(!points.is_empty());
+        let count = points.len() as f32;
+        let sum = points
+            .iter()
+            .map(|point| point.centroid[direction_index])
+            .sum::<f32>();
+        sum / count
+    }
+
+    pub fn variance_along_direction<const K: usize, const M: usize>(
+        points: &[Box<SsNode<K, M>>],
+        direction_index: usize,
+    ) -> f32 {
+        assert!(!points.is_empty());
+        let mean = mean_along_direction(points, direction_index);
+        let count = points.len() as f32;
+        points
+            .iter()
+            .map(|point| {
+                let diff = mean - point.centroid[direction_index];
+
+                diff * diff
+            })
+            .sum::<f32>()
+            / count
+    }
+
+    pub fn direction_of_max_variance<const K: usize, const M: usize>(
+        points: &[Box<SsNode<K, M>>],
+    ) -> usize {
+        let mut max_variance = 0.0;
+        let mut direction_index = 0;
+        for i in 0..K {
+            let variance = variance_along_direction(points, i);
+            if variance > max_variance {
+                max_variance = variance;
+                direction_index = i;
+            }
+        }
+        direction_index
+    }
+}
 #[test]
 fn test_search() {
     // let root =
