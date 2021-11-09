@@ -1,0 +1,70 @@
+use aadsia::sstree::SsTree;
+use draw::{render, Canvas, Color, Drawing, Shape, Style, SvgRenderer};
+use rand::{random, Rng};
+
+fn main() {
+    let mut tree = SsTree::<2, 8>::new();
+
+    tree.insert(&[1.0, 1.0]);
+    tree.insert(&[0.0, 0.0]);
+    tree.insert(&[2.0, 2.0]);
+    tree.insert(&[3.0, 3.0]);
+
+    println!("{:?}", tree);
+
+    tree.insert(&[4.0, 4.0]);
+    tree.insert(&[5.0, 5.0]);
+    tree.insert(&[6.0, 6.0]);
+    tree.insert(&[7.0, 7.0]);
+
+    println!("{:?}", tree);
+    tree.insert(&[-1.0, -1.0]);
+
+    // tree.insert(&[4.0, 4.0]);
+
+    println!("{:?}", tree);
+
+    let mut tree = SsTree::<2, 8>::new();
+    let mut rng = rand::thread_rng();
+    for _ in 0..2000 {
+        tree.insert(&[
+            5f32 + rng.gen::<f32>() * 10f32,
+            5f32 + rng.gen::<f32>() * 10f32,
+        ]);
+    }
+
+    let mut canvas = Canvas::new(1000, 1000);
+    draw_node(&tree.root, &mut canvas);
+    render::save(&canvas, "plot.svg", SvgRenderer::new()).unwrap();
+}
+
+const SCALE: f32 = 50.0;
+
+type SsNode28 = aadsia::sstree::SsNode<2, 8>;
+fn draw_node(node: &SsNode28, canvas: &mut Canvas) {
+    let circle = Drawing::new()
+        .with_shape(Shape::Circle {
+            radius: (node.radius * SCALE) as u32,
+        })
+        .with_xy(node.centroid[0] * SCALE, node.centroid[1] * SCALE)
+        .with_style(Style::stroked(1, Color::black()));
+
+    canvas.display_list.add(circle);
+
+    match &node.links {
+        aadsia::sstree::SsNodeLinks::Inner(nodes) => {
+            for node in nodes.iter() {
+                draw_node(node, canvas);
+            }
+        }
+        aadsia::sstree::SsNodeLinks::Leaf(points) => {
+            for point in points.iter() {
+                let point_drawing = Drawing::new()
+                    .with_shape(Shape::Circle { radius: 1 })
+                    .with_xy(point[0] * SCALE, point[1] * SCALE)
+                    .with_style(Style::stroked(1, Color::black()));
+                canvas.display_list.add(point_drawing);
+            }
+        }
+    }
+}

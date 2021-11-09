@@ -2,15 +2,17 @@ use std::ops::Index;
 
 use arrayvec::ArrayVec;
 
-enum SsNodeLinks<const K: usize, const M: usize> {
+#[derive(Debug)]
+pub enum SsNodeLinks<const K: usize, const M: usize> {
     Inner(ArrayVec<Box<SsNode<K, M>>, M>),
     Leaf(ArrayVec<[f32; K], M>),
 }
 
+#[derive(Debug)]
 pub struct SsNode<const K: usize, const M: usize> {
-    centroid: [f32; K],
-    radius: f32,
-    links: SsNodeLinks<K, M>,
+    pub centroid: [f32; K],
+    pub radius: f32,
+    pub links: SsNodeLinks<K, M>,
 }
 
 fn distance<const K: usize>(p1: &[f32; K], p2: &[f32; K]) -> f32 {
@@ -221,6 +223,43 @@ fn find_closest_child_index<const K: usize, const M: usize>(
         }
     }
     cur_min.unwrap()
+}
+
+#[derive(Debug)]
+pub struct SsTree<const K: usize, const M: usize> {
+    pub root: SsNode<K, M>,
+}
+
+impl<const K: usize, const M: usize> SsTree<K, M> {
+    pub fn new() -> Self {
+        Self {
+            root: SsNode {
+                centroid: [0f32; K],
+                radius: 0f32,
+                links: SsNodeLinks::Leaf(ArrayVec::new()),
+            },
+        }
+    }
+
+    pub fn insert(&mut self, point: &[f32; K]) {
+        if let Some((new_child_1, new_child_2)) = self.root.insert(point) {
+            let mut nodes = ArrayVec::<_, M>::new();
+            nodes.push(new_child_1);
+            nodes.push(new_child_2);
+            let (centroid, radius) = inner::centroid_and_radius(&nodes);
+            self.root = SsNode {
+                centroid,
+                radius,
+                links: SsNodeLinks::Inner(nodes),
+            }
+        }
+    }
+}
+
+impl<const K: usize, const M: usize> Default for SsTree<K, M> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 mod leaf {
