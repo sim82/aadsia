@@ -228,6 +228,7 @@ fn find_closest_child_index<const K: usize, const M: usize>(
 #[derive(Debug)]
 pub struct SsTree<const K: usize, const M: usize> {
     pub root: SsNode<K, M>,
+    height: usize,
 }
 
 impl<const K: usize, const M: usize> SsTree<K, M> {
@@ -238,6 +239,7 @@ impl<const K: usize, const M: usize> SsTree<K, M> {
                 radius: 0f32,
                 links: SsNodeLinks::Leaf(ArrayVec::new()),
             },
+            height: 1,
         }
     }
 
@@ -251,8 +253,12 @@ impl<const K: usize, const M: usize> SsTree<K, M> {
                 centroid,
                 radius,
                 links: SsNodeLinks::Inner(nodes),
-            }
+            };
+            self.height += 1;
         }
+    }
+    pub fn get_height(&self) -> usize {
+        self.height
     }
 }
 

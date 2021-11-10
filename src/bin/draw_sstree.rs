@@ -1,5 +1,5 @@
 use aadsia::sstree::SsTree;
-use draw::{render, Canvas, Color, Drawing, Shape, Style, SvgRenderer};
+use draw::{render, Canvas, Color, Drawing, Shape, Style, SvgRenderer, RGB};
 use rand::{random, Rng};
 
 fn main() {
@@ -26,36 +26,65 @@ fn main() {
 
     let mut tree = SsTree::<2, 8>::new();
     let mut rng = rand::thread_rng();
-    for _ in 0..2000 {
+    for _ in 0..2000000 {
         tree.insert(&[
             5f32 + rng.gen::<f32>() * 10f32,
             5f32 + rng.gen::<f32>() * 10f32,
         ]);
     }
+    println!("tree built. height: {}", tree.get_height());
+
+    panic!("exit");
 
     let mut canvas = Canvas::new(1000, 1000);
-    draw_node(&tree.root, &mut canvas);
+    draw_node(&tree.root, &mut canvas, &mut LevelColor::default());
+    println!("drawed");
     render::save(&canvas, "plot.svg", SvgRenderer::new()).unwrap();
 }
 
 const SCALE: f32 = 50.0;
 
 type SsNode28 = aadsia::sstree::SsNode<2, 8>;
-fn draw_node(node: &SsNode28, canvas: &mut Canvas) {
+
+#[derive(Default)]
+struct LevelColor {
+    level: usize,
+    colors: Vec<RGB>,
+}
+
+impl LevelColor {
+    pub fn get(&mut self) -> RGB {
+        if self.colors.len() <= self.level {
+            self.colors.push(Color::random())
+        }
+        self.colors[self.level].clone()
+    }
+    pub fn inc(&mut self) {
+        self.level += 1;
+    }
+    pub fn dec(&mut self) {
+        assert!(self.level > 0);
+        self.level -= 1;
+    }
+}
+
+fn draw_node(node: &SsNode28, canvas: &mut Canvas, level_color: &mut LevelColor) {
     let circle = Drawing::new()
         .with_shape(Shape::Circle {
             radius: (node.radius * SCALE) as u32,
         })
         .with_xy(node.centroid[0] * SCALE, node.centroid[1] * SCALE)
-        .with_style(Style::stroked(1, Color::black()));
+        .with_style(Style::stroked(1, level_color.get()));
 
     canvas.display_list.add(circle);
 
     match &node.links {
         aadsia::sstree::SsNodeLinks::Inner(nodes) => {
+            level_color.inc();
             for node in nodes.iter() {
-                draw_node(node, canvas);
+                draw_node(node, canvas, level_color);
             }
+            level_color.dec();
         }
         aadsia::sstree::SsNodeLinks::Leaf(points) => {
             for point in points.iter() {
