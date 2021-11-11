@@ -1,9 +1,9 @@
-use aadsia::sstree::SsTree;
+use aadsia::sstree::{SsNode, SsTree};
 use draw::{render, Canvas, Color, Drawing, Shape, Style, SvgRenderer, RGB};
 use rand::{random, Rng};
 
 fn main() {
-    let mut tree = SsTree::<2, 8>::new();
+    let mut tree = SsTree::<2, 8>::new(2);
 
     tree.insert(&[1.0, 1.0]);
     tree.insert(&[0.0, 0.0]);
@@ -24,18 +24,20 @@ fn main() {
 
     println!("{:?}", tree);
 
-    let mut tree = SsTree::<2, 8>::new();
+    let mut tree = SsTree::<2, 8>::new(2);
     let mut rng = rand::thread_rng();
-    for _ in 0..2000000 {
+    for _ in 0..4000 {
         tree.insert(&[
             5f32 + rng.gen::<f32>() * 10f32,
             5f32 + rng.gen::<f32>() * 10f32,
         ]);
     }
-    println!("tree built. height: {}", tree.get_height());
-
-    panic!("exit");
-
+    println!(
+        "tree built. height: {} {}",
+        tree.get_height(),
+        tree.get_fill_factor()
+    );
+    // panic!("exit");
     let mut canvas = Canvas::new(1000, 1000);
     draw_node(&tree.root, &mut canvas, &mut LevelColor::default());
     println!("drawed");
@@ -44,15 +46,39 @@ fn main() {
 
 const SCALE: f32 = 50.0;
 
-type SsNode28 = aadsia::sstree::SsNode<2, 8>;
-
-#[derive(Default)]
 struct LevelColor {
     level: usize,
     colors: Vec<RGB>,
 }
 
 impl LevelColor {
+    pub fn new() -> Self {
+        Self {
+            level: 0,
+            colors: vec![
+                RGB { r: 0, g: 0, b: 0 },
+                RGB { r: 255, g: 0, b: 0 },
+                RGB { r: 0, g: 255, b: 0 },
+                RGB { r: 0, g: 0, b: 255 },
+                RGB {
+                    r: 255,
+                    g: 255,
+                    b: 0,
+                },
+                RGB {
+                    r: 0,
+                    g: 255,
+                    b: 255,
+                },
+                RGB {
+                    r: 255,
+                    g: 0,
+                    b: 255,
+                },
+            ],
+        }
+    }
+
     pub fn get(&mut self) -> RGB {
         if self.colors.len() <= self.level {
             self.colors.push(Color::random())
@@ -68,7 +94,17 @@ impl LevelColor {
     }
 }
 
-fn draw_node(node: &SsNode28, canvas: &mut Canvas, level_color: &mut LevelColor) {
+impl Default for LevelColor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn draw_node<const K: usize, const M: usize>(
+    node: &SsNode<K, M>,
+    canvas: &mut Canvas,
+    level_color: &mut LevelColor,
+) {
     let circle = Drawing::new()
         .with_shape(Shape::Circle {
             radius: (node.radius * SCALE) as u32,
@@ -87,12 +123,14 @@ fn draw_node(node: &SsNode28, canvas: &mut Canvas, level_color: &mut LevelColor)
             level_color.dec();
         }
         aadsia::sstree::SsNodeLinks::Leaf(points) => {
-            for point in points.iter() {
-                let point_drawing = Drawing::new()
-                    .with_shape(Shape::Circle { radius: 1 })
-                    .with_xy(point[0] * SCALE, point[1] * SCALE)
-                    .with_style(Style::stroked(1, Color::black()));
-                canvas.display_list.add(point_drawing);
+            if !false {
+                for point in points.iter() {
+                    let point_drawing = Drawing::new()
+                        .with_shape(Shape::Circle { radius: 1 })
+                        .with_xy(point[0] * SCALE, point[1] * SCALE)
+                        .with_style(Style::stroked(1, Color::black()));
+                    canvas.display_list.add(point_drawing);
+                }
             }
         }
     }
