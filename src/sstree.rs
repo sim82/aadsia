@@ -31,7 +31,7 @@ fn test_distance() {
 }
 
 impl<const K: usize, const M: usize> SsNode<K, M> {
-    pub fn intersects_points(&self, target: &[f32; K]) -> bool {
+    pub fn intersects_point(&self, target: &[f32; K]) -> bool {
         distance(&self.centroid, target) <= self.radius
     }
 
@@ -40,7 +40,7 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
             SsNodeLinks::Inner(children) => {
                 children
                     .iter()
-                    .find(|node| node.intersects_points(target))
+                    .find(|node| node.intersects_point(target))
                     .map(|node| node.as_ref())
                 // for node in children {
                 //     if node.intersects_points(target) {
@@ -82,7 +82,7 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
         self.centroid = centroid;
         self.radius = radius;
     }
-    pub fn insert(&mut self, point: &[f32; K]) -> Option<(Box<Self>, Box<Self>)> {
+    pub fn insert(&mut self, point: &[f32; K], m: usize) -> Option<(Box<Self>, Box<Self>)> {
         match &mut self.links {
             SsNodeLinks::Leaf(points) => {
                 if points.iter().any(|p| *p == *point) {
@@ -97,7 +97,7 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                     let mut nodes_to_split: Vec<[f32; K]> =
                         points.drain(..).chain(std::iter::once(*point)).collect();
 
-                    let split_index = leaf::find_split_index(&mut nodes_to_split);
+                    let split_index = leaf::find_split_index(&mut nodes_to_split, m);
                     let points1: ArrayVec<_, M> =
                         nodes_to_split[..split_index].iter().cloned().collect();
                     let (centroid1, radius1) = leaf::centroid_and_radius(&points1);
@@ -123,7 +123,7 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
             SsNodeLinks::Inner(children) => {
                 let closest_child_index = find_closest_child_index(children, point);
                 if let Some((new_child_1, new_child_2)) =
-                    children[closest_child_index].insert(point)
+                    children[closest_child_index].insert(point, m)
                 {
                     children.remove(closest_child_index);
 
@@ -137,7 +137,7 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                             .chain(std::iter::once(new_child_2))
                             .collect();
 
-                        let split_index = inner::find_split_index(&mut nodes_to_split);
+                        let split_index = inner::find_split_index(&mut nodes_to_split, m);
 
                         let points2: ArrayVec<_, M> = nodes_to_split.drain(split_index..).collect();
                         let (centroid2, radius2) = inner::centroid_and_radius(&points2);
@@ -187,6 +187,136 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
         //         return null
         //   return this.split()
     }
+
+    pub fn delete(&mut self, target: &[f32; K], m: usize) -> (bool, bool) {
+        match &mut self.links {
+            SsNodeLinks::Leaf(points) => {
+                if let Some((i, _)) = points.iter().enumerate().find(|(_, p)| *p == target) {
+                    points.remove(i);
+                    (true, points.len() < m)
+                } else {
+                    (false, false)
+                }
+            }
+            SsNodeLinks::Inner(nodes) => {
+                let mut node_to_fix_index = None;
+                let mut deleted = false;
+                for (i, child_node) in nodes.iter_mut().enumerate() {
+                    if child_node.intersects_point(target) {
+                        let (deleted, violates_invariants) = child_node.delete(target, m);
+
+                        if violates_invariants {
+                            node_to_fix_index = Some(i);
+                        }
+                        if deleted {
+                            break;
+                        }
+                    }
+                }
+                match node_to_fix_index {
+                    None => {
+                        if deleted {
+                            self.update_bounding_envelope();
+                        }
+                        (deleted, false)
+                    }
+
+                    Some(node_to_fix) => {
+                        let siblings_to_borrow_from =
+                            nodes
+                                .iter()
+                                .enumerate()
+                                .filter(|(i, sibling)| match &sibling.links {
+                                    SsNodeLinks::Inner(nodes) => {
+                                        *i != node_to_fix && nodes.len() > m
+                                    }
+                                    SsNodeLinks::Leaf(points) => {
+                                        *i != node_to_fix && points.len() > m
+                                    }
+                                });
+
+                        let mut closest_sibling = None;
+                        let mut closest_sibling_dist = f32::INFINITY;
+                        for (i, sibling) in siblings_to_borrow_from {
+                            let distance =
+                                distance(&nodes[node_to_fix].centroid, &sibling.centroid);
+                            if distance < closest_sibling_dist {
+                                closest_sibling = Some(i);
+                                closest_sibling_dist = distance;
+                            }
+                        }
+                        if let Some(closest_sibling) = closest_sibling {
+                            let to_fix_centroid = nodes[node_to_fix].centroid;
+
+                            match &mut nodes[closest_sibling].links {
+                                SsNodeLinks::Inner(nodes2) => {
+                                    let mut closest_node = None;
+                                    let mut closest_node_dist = f32::INFINITY;
+                                    for (i, node) in nodes2.iter().enumerate() {
+                                        let distance = distance(&node.centroid, &to_fix_centroid);
+                                        if distance < closest_node_dist {
+                                            closest_node = Some(i);
+                                            closest_node_dist = distance;
+                                        }
+                                    }
+                                    let node = nodes2.remove(closest_node.unwrap());
+
+                                    match &mut nodes[closest_sibling].links {
+                                        SsNodeLinks::Inner(fix_nodes) => fix_nodes.push(node),
+                                        SsNodeLinks::Leaf(_) => panic!("unbalanced tree"),
+                                    }
+                                }
+                                SsNodeLinks::Leaf(points) => todo!(),
+                            }
+                        }
+
+                        (true, nodes.len() < m)
+                    }
+                }
+            }
+        }
+    }
+
+    //     function delete(node, target)
+    //   if node.leaf then
+    //     if node.points.contains(target) then
+    //       node.points.delete(target)
+    //       return (true, node.points.size() < m)
+    //     else
+    //      return (false, false)
+    //   else
+    //     nodeToFix ← null
+    //     deleted ← false
+    //     for childNode in node.children do
+    //       if childNode.intersectsPoint(target) then
+    //         (deleted, violatesevariants) ← delete(childNode, target)
+    //         if violatesevariants == true then
+    //           nodeToFix ← childNode
+    //         if deleted then
+    //           break
+    //   if nodeToFix == null then
+    //     if deleted then
+    //       node.updateBoundingEnvelope()
+    //     return (deleted, false)
+    //   else
+    //     siblingsToBorrowFrom(nodeToFix)
+    //     if not siblings.isEmpty() then
+    //       nodeToFix.borrowFromSibling(siblings)
+    //     else
+    //       node.mergeChildren(
+    //         nodeToFix, node.findSiblingToMergeTo(nodeToFix))
+    //     node.updateBoundingEnvelope()
+    //     return (true, node.children.size() < m)
+
+    pub fn count_nodes(&self) -> (usize, usize) {
+        match &self.links {
+            SsNodeLinks::Inner(nodes) => nodes.iter().fold((0, 1), |(a_points, a_nodes), n| {
+                let (points, nodes) = n.count_nodes();
+                (a_points + points, a_nodes + nodes)
+            }),
+            SsNodeLinks::Leaf(points) => (points.len(), 1),
+        }
+    }
 }
 fn find_closest_child<'a, const K: usize, const M: usize>(
     children: &'a [Box<SsNode<K, M>>],
@@ -229,10 +359,11 @@ fn find_closest_child_index<const K: usize, const M: usize>(
 pub struct SsTree<const K: usize, const M: usize> {
     pub root: SsNode<K, M>,
     height: usize,
+    m: usize,
 }
 
 impl<const K: usize, const M: usize> SsTree<K, M> {
-    pub fn new() -> Self {
+    pub fn new(m: usize) -> Self {
         Self {
             root: SsNode {
                 centroid: [0f32; K],
@@ -240,11 +371,12 @@ impl<const K: usize, const M: usize> SsTree<K, M> {
                 links: SsNodeLinks::Leaf(ArrayVec::new()),
             },
             height: 1,
+            m,
         }
     }
 
     pub fn insert(&mut self, point: &[f32; K]) {
-        if let Some((new_child_1, new_child_2)) = self.root.insert(point) {
+        if let Some((new_child_1, new_child_2)) = self.root.insert(point, self.m) {
             let mut nodes = ArrayVec::<_, M>::new();
             nodes.push(new_child_1);
             nodes.push(new_child_2);
@@ -260,11 +392,15 @@ impl<const K: usize, const M: usize> SsTree<K, M> {
     pub fn get_height(&self) -> usize {
         self.height
     }
+    pub fn get_fill_factor(&self) -> f32 {
+        let (num_points, num_nodes) = self.root.count_nodes();
+        num_points as f32 / num_nodes as f32
+    }
 }
 
 impl<const K: usize, const M: usize> Default for SsTree<K, M> {
     fn default() -> Self {
-        Self::new()
+        Self::new(M / 2)
     }
 }
 
@@ -313,7 +449,7 @@ mod leaf {
         direction_index
     }
 
-    pub fn find_split_index<const K: usize>(points: &mut [[f32; K]]) -> usize {
+    pub fn find_split_index<const K: usize>(points: &mut [[f32; K]], m: usize) -> usize {
         let coordinate_index = direction_of_max_variance(points);
         points.sort_by(|p1, p2| {
             p1[coordinate_index]
@@ -321,9 +457,8 @@ mod leaf {
                 .unwrap()
         });
         let mut min_variance = f32::INFINITY;
-        const M_LOWER: usize = 2;
-        let mut split_index = M_LOWER;
-        for i in M_LOWER..=(points.len() - M_LOWER) {
+        let mut split_index = m;
+        for i in m..=(points.len() - m) {
             let variance1 = variance_along_direction(&points[..i], coordinate_index);
             let variance2 = variance_along_direction(&points[i..], coordinate_index);
             let variance = variance1 + variance2;
@@ -354,6 +489,7 @@ mod inner {
 
     pub fn find_split_index<const K: usize, const M: usize>(
         nodes: &mut [Box<SsNode<K, M>>],
+        m: usize,
     ) -> usize {
         let coordinate_index = direction_of_max_variance(nodes);
         nodes.sort_by(|p1, p2| {
@@ -362,9 +498,8 @@ mod inner {
                 .unwrap()
         });
         let mut min_variance = f32::INFINITY;
-        const M_LOWER: usize = 2;
-        let mut split_index = M_LOWER;
-        for i in M_LOWER..=(nodes.len() - M_LOWER) {
+        let mut split_index = m;
+        for i in m..=(nodes.len() - m) {
             let variance1 = variance_along_direction(&nodes[..i], coordinate_index);
             let variance2 = variance_along_direction(&nodes[i..], coordinate_index);
             let variance = variance1 + variance2;
@@ -383,6 +518,8 @@ mod inner {
         for i in 0..K {
             centroid[i] = mean_along_direction(nodes, i);
         }
+
+        // let centroid = mean_along_all_directions(nodes);
 
         let radius = nodes
             .iter()
@@ -404,6 +541,22 @@ mod inner {
             .sum::<f32>();
         sum / count
     }
+
+    // pub fn mean_along_all_directions<const K: usize, const M: usize>(
+    //     points: &[Box<SsNode<K, M>>],
+    // ) -> [f32; K] {
+    //     assert!(!points.is_empty());
+    //     let count = points.len() as f32;
+    //     let mut sum = points.iter().fold([0f32; K], |a, node| {
+    //         let mut a = a.clone();
+    //         a.iter_mut()
+    //             .zip(node.centroid.iter())
+    //             .for_each(|(a, c)| *a += *c);
+    //         a
+    //     });
+    //     sum.iter_mut().for_each(|sum| *sum /= count);
+    //     sum
+    // }
 
     pub fn variance_along_direction<const K: usize, const M: usize>(
         points: &[Box<SsNode<K, M>>],
