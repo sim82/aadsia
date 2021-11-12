@@ -203,8 +203,10 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                 let mut deleted = false;
                 for (i, child_node) in nodes.iter_mut().enumerate() {
                     if child_node.intersects_point(target) {
-                        let (deleted, violates_invariants) = child_node.delete(target, m);
-
+                        let res = child_node.delete(target, m);
+                        deleted = res.0;
+                        let violates_invariants = res.1;
+                        // println!("{:?} {:?}", deleted, violates_invariants);
                         if violates_invariants {
                             node_to_fix_index = Some(i);
                         }
@@ -237,6 +239,7 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
 
                         let mut closest_sibling = None;
                         let mut closest_sibling_dist = f32::INFINITY;
+
                         for (i, sibling) in siblings_to_borrow_from {
                             let distance =
                                 distance(&nodes[node_to_fix].centroid, &sibling.centroid);
@@ -245,6 +248,7 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                                 closest_sibling_dist = distance;
                             }
                         }
+
                         if let Some(closest_sibling) = closest_sibling {
                             let to_fix_centroid = nodes[node_to_fix].centroid;
 
@@ -260,13 +264,37 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                                         }
                                     }
                                     let node = nodes2.remove(closest_node.unwrap());
+                                    nodes[closest_sibling].update_bounding_envelope();
 
-                                    match &mut nodes[closest_sibling].links {
+                                    match &mut nodes[node_to_fix].links {
                                         SsNodeLinks::Inner(fix_nodes) => fix_nodes.push(node),
                                         SsNodeLinks::Leaf(_) => panic!("unbalanced tree"),
                                     }
+                                    nodes[node_to_fix].update_bounding_envelope();
+
                                 }
-                                SsNodeLinks::Leaf(points) => todo!(),
+                                SsNodeLinks::Leaf(points) => {
+                                    let mut closest_point = None;
+                                    let mut closest_point_dist = f32::INFINITY;
+                                    for (i, point) in points.iter().enumerate() {
+                                        let distance = distance(point, &to_fix_centroid);
+                                        if distance < closest_point_dist {
+                                            closest_point = Some(i);
+                                            closest_point_dist = distance;
+                                        }
+                                    }
+                                    println!(
+                                        "closest point: {:?} {} {}",
+                                        closest_point, closest_sibling, node_to_fix
+                                    );
+                                    let point = points.remove(closest_point.unwrap());
+                                    nodes[closest_sibling].update_bounding_envelope();
+                                    match &mut nodes[node_to_fix].links {
+                                        SsNodeLinks::Inner(_) => panic!("unbalanced tree"),
+                                        SsNodeLinks::Leaf(fix_points) => fix_points.push(point),
+                                    }
+                                    nodes[node_to_fix].update_bounding_envelope();
+                                }
                             }
                         }
 
@@ -389,6 +417,10 @@ impl<const K: usize, const M: usize> SsTree<K, M> {
             self.height += 1;
         }
     }
+    pub fn delete(&mut self, point: &[f32; K]) {
+        self.root.delete(point, self.m);
+    }
+
     pub fn get_height(&self) -> usize {
         self.height
     }
