@@ -4,8 +4,8 @@ use arrayvec::ArrayVec;
 
 #[derive(Debug)]
 pub enum SsNodeLinks<const K: usize, const M: usize> {
-    Inner(ArrayVec<Box<SsNode<K, M>>, M>),
-    Leaf(ArrayVec<[f32; K], M>),
+    Inner(Box<ArrayVec<SsNode<K, M>, M>>),
+    Leaf(Box<ArrayVec<[f32; K], M>>),
 }
 
 #[derive(Debug)]
@@ -31,22 +31,22 @@ fn test_distance() {
 }
 
 impl<const K: usize, const M: usize> SsNode<K, M> {
-    pub fn from_points(points: ArrayVec<[f32; K], M>) -> Box<Self> {
+    pub fn from_points(points: ArrayVec<[f32; K], M>) -> Self {
         let (centroid, radius) = leaf::centroid_and_radius(&points);
-        Box::new(Self {
+        Self {
             centroid,
             radius,
-            links: SsNodeLinks::Leaf(points),
-        })
+            links: SsNodeLinks::Leaf(Box::new(points)),
+        }
     }
 
-    pub fn from_nodes(nodes: ArrayVec<Box<Self>, M>) -> Box<Self> {
+    pub fn from_nodes(nodes: ArrayVec<Self, M>) -> Self {
         let (centroid, radius) = inner::centroid_and_radius(&nodes);
-        Box::new(Self {
+        Self {
             centroid,
             radius,
-            links: SsNodeLinks::Inner(nodes),
-        })
+            links: SsNodeLinks::Inner(Box::new(nodes)),
+        }
     }
 
     pub fn intersects_point(&self, target: &[f32; K]) -> bool {
@@ -59,7 +59,7 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                 children
                     .iter()
                     .find(|node| node.intersects_point(target))
-                    .map(|node| node.as_ref())
+                    .map(|node| node)
                 // for node in children {
                 //     if node.intersects_points(target) {
                 //         match node.search(target) {
@@ -100,7 +100,7 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
         self.centroid = centroid;
         self.radius = radius;
     }
-    pub fn insert(&mut self, point: &[f32; K], m: usize) -> Option<(Box<Self>, Box<Self>)> {
+    pub fn insert(&mut self, point: &[f32; K], m: usize) -> Option<(Self, Self)> {
         match &mut self.links {
             SsNodeLinks::Leaf(points) => {
                 if points.iter().any(|p| *p == *point) {
@@ -124,16 +124,16 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                         nodes_to_split[split_index..].iter().cloned().collect();
                     let (centroid2, radius2) = leaf::centroid_and_radius(&points2);
 
-                    let new_node1 = Box::new(Self {
+                    let new_node1 = Self {
                         centroid: centroid1,
                         radius: radius1,
-                        links: SsNodeLinks::Leaf(points1),
-                    });
-                    let new_node2 = Box::new(Self {
+                        links: SsNodeLinks::Leaf(Box::new(points1)),
+                    };
+                    let new_node2 = Self {
                         centroid: centroid2,
                         radius: radius2,
-                        links: SsNodeLinks::Leaf(points2),
-                    });
+                        links: SsNodeLinks::Leaf(Box::new(points2)),
+                    };
                     return Some((new_node1, new_node2));
                 }
             }
@@ -163,16 +163,16 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                         let points1: ArrayVec<_, M> = nodes_to_split.drain(..split_index).collect();
                         let (centroid1, radius1) = inner::centroid_and_radius(&points1);
 
-                        let new_node1 = Box::new(Self {
+                        let new_node1 = Self {
                             centroid: centroid1,
                             radius: radius1,
-                            links: SsNodeLinks::Inner(points1),
-                        });
-                        let new_node2 = Box::new(Self {
+                            links: SsNodeLinks::Inner(Box::new(points1)),
+                        };
+                        let new_node2 = Self {
                             centroid: centroid2,
                             radius: radius2,
-                            links: SsNodeLinks::Inner(points2),
-                        });
+                            links: SsNodeLinks::Inner(Box::new(points2)),
+                        };
                         return Some((new_node1, new_node2));
                     }
                 } else {
@@ -249,7 +249,7 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
 }
 
 fn find_closest_child<'a, const K: usize, const M: usize>(
-    children: &'a [Box<SsNode<K, M>>],
+    children: &'a [SsNode<K, M>],
     target: &[f32; K],
 ) -> &'a SsNode<K, M> {
     // children
@@ -264,13 +264,13 @@ fn find_closest_child<'a, const K: usize, const M: usize>(
         let d = distance(&child.centroid, target);
         if d < min_dist {
             min_dist = d;
-            cur_min = Some(child.as_ref());
+            cur_min = Some(child);
         }
     }
     cur_min.unwrap()
 }
 fn find_closest_child_index<const K: usize, const M: usize>(
-    children: &[Box<SsNode<K, M>>],
+    children: &[SsNode<K, M>],
     target: &[f32; K],
 ) -> usize {
     let mut min_dist = f32::MAX;
@@ -298,7 +298,7 @@ impl<const K: usize, const M: usize> SsTree<K, M> {
             root: SsNode {
                 centroid: [0f32; K],
                 radius: 0f32,
-                links: SsNodeLinks::Leaf(ArrayVec::new()),
+                links: SsNodeLinks::Leaf(Box::new(ArrayVec::new())),
             },
             height: 1,
             m,
@@ -314,7 +314,7 @@ impl<const K: usize, const M: usize> SsTree<K, M> {
             self.root = SsNode {
                 centroid,
                 radius,
-                links: SsNodeLinks::Inner(nodes),
+                links: SsNodeLinks::Inner(Box::new(nodes)),
             };
             self.height += 1;
         }
@@ -424,7 +424,7 @@ mod inner {
     use super::{distance, SsNode, SsNodeLinks};
 
     pub fn find_split_index<const K: usize, const M: usize>(
-        nodes: &mut [Box<SsNode<K, M>>],
+        nodes: &mut [SsNode<K, M>],
         m: usize,
     ) -> usize {
         let coordinate_index = direction_of_max_variance(nodes);
@@ -448,7 +448,7 @@ mod inner {
     }
 
     pub fn centroid_and_radius<const K: usize, const M: usize>(
-        nodes: &[Box<SsNode<K, M>>],
+        nodes: &[SsNode<K, M>],
     ) -> ([f32; K], f32) {
         let mut centroid = [0f32; K];
         for (i, c) in centroid.iter_mut().enumerate().take(K) {
@@ -466,7 +466,7 @@ mod inner {
     }
 
     pub fn mean_along_direction<const K: usize, const M: usize>(
-        points: &[Box<SsNode<K, M>>],
+        points: &[SsNode<K, M>],
         direction_index: usize,
     ) -> f32 {
         assert!(!points.is_empty());
@@ -495,7 +495,7 @@ mod inner {
     // }
 
     pub fn variance_along_direction<const K: usize, const M: usize>(
-        points: &[Box<SsNode<K, M>>],
+        points: &[SsNode<K, M>],
         direction_index: usize,
     ) -> f32 {
         assert!(!points.is_empty());
@@ -513,7 +513,7 @@ mod inner {
     }
 
     pub fn direction_of_max_variance<const K: usize, const M: usize>(
-        points: &[Box<SsNode<K, M>>],
+        points: &[SsNode<K, M>],
     ) -> usize {
         let mut max_variance = 0.0;
         let mut direction_index = 0;
@@ -528,7 +528,7 @@ mod inner {
     }
 
     pub fn find_sibling_to_borrow_from<const K: usize, const M: usize>(
-        nodes: &[Box<SsNode<K, M>>],
+        nodes: &[SsNode<K, M>],
         node_to_fix: usize,
         m: usize,
     ) -> Option<usize> {
@@ -555,7 +555,7 @@ mod inner {
     }
 
     pub fn borrow_from_sibling<const K: usize, const M: usize>(
-        nodes: &mut [Box<SsNode<K, M>>],
+        nodes: &mut [SsNode<K, M>],
         node_to_fix: usize,
 
         sibling_to_borrow_from: usize,
@@ -609,7 +609,7 @@ mod inner {
     }
 
     pub fn find_sibling_to_merge_to<const K: usize, const M: usize>(
-        nodes: &[Box<SsNode<K, M>>],
+        nodes: &[SsNode<K, M>],
         node_to_fix: usize,
         m: usize,
     ) -> Option<usize> {
@@ -636,7 +636,7 @@ mod inner {
     }
 
     pub fn merge_siblings<const K: usize, const M: usize>(
-        nodes: &mut ArrayVec<Box<SsNode<K, M>>, M>,
+        nodes: &mut ArrayVec<SsNode<K, M>, M>,
         mut node_index_1: usize,
         mut node_index_2: usize,
     ) {
@@ -651,17 +651,17 @@ mod inner {
     }
 
     fn merge<const K: usize, const M: usize>(
-        node_1: Box<SsNode<K, M>>,
-        node_2: Box<SsNode<K, M>>,
-    ) -> Box<SsNode<K, M>> {
+        node_1: SsNode<K, M>,
+        node_2: SsNode<K, M>,
+    ) -> SsNode<K, M> {
         match (node_1.links, node_2.links) {
             (SsNodeLinks::Leaf(mut points1), SsNodeLinks::Leaf(mut points2)) => {
                 points1.extend(points2.drain(..));
-                SsNode::<K, M>::from_points(points1)
+                SsNode::<K, M>::from_points(*points1)
             }
             (SsNodeLinks::Inner(mut nodes1), SsNodeLinks::Inner(mut nodes2)) => {
                 nodes1.extend(nodes2.drain(..));
-                SsNode::<K, M>::from_nodes(nodes1)
+                SsNode::<K, M>::from_nodes(*nodes1)
             }
             _ => panic!("inconsistent siblings"),
         }
