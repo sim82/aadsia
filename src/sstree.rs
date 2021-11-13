@@ -182,28 +182,6 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
             _ => panic!("split link types not allowed"),
         }
         None
-        // self.split()
-        //   if this.leaf then
-        //     if point in this.points then
-        //       return null
-        //     this.points.add(point)
-        //     this.updateBoundingEnvelope()
-        //     if this.points.size <= M then
-        //       return null
-        //   else
-        //     closestChild ← this.findClosestChild()
-        //     (newChild1, newChild2) ← insert(closestChild, point)
-        //     if newChild1 == null then
-        //       node.updateBoundingEnvelope()
-        //       return null
-        //     else
-        //       this.children.delete(closestChild)
-        //       this.children.add(newChild1)
-        //       this.children.add(newChild2)
-        //       node.updateBoundingEnvelope()
-        //       if this.children.size <= M then
-        //         return null
-        //   return this.split()
     }
 
     pub fn delete(&mut self, target: &[f32; K], m: usize) -> (bool, bool) {
@@ -258,37 +236,6 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
             }
         }
     }
-
-    //     function delete(node, target)
-    //   if node.leaf then
-    //     if node.points.contains(target) then
-    //       node.points.delete(target)
-    //       return (true, node.points.size() < m)
-    //     else
-    //      return (false, false)
-    //   else
-    //     nodeToFix ← null
-    //     deleted ← false
-    //     for childNode in node.children do
-    //       if childNode.intersectsPoint(target) then
-    //         (deleted, violatesevariants) ← delete(childNode, target)
-    //         if violatesevariants == true then
-    //           nodeToFix ← childNode
-    //         if deleted then
-    //           break
-    //   if nodeToFix == null then
-    //     if deleted then
-    //       node.updateBoundingEnvelope()
-    //     return (deleted, false)
-    //   else
-    //     siblingsToBorrowFrom(nodeToFix)
-    //     if not siblings.isEmpty() then
-    //       nodeToFix.borrowFromSibling(siblings)
-    //     else
-    //       node.mergeChildren(
-    //         nodeToFix, node.findSiblingToMergeTo(nodeToFix))
-    //     node.updateBoundingEnvelope()
-    //     return (true, node.children.size() < m)
 
     pub fn count_nodes(&self) -> (usize, usize) {
         match &self.links {
@@ -719,22 +666,6 @@ mod inner {
             _ => panic!("inconsistent siblings"),
         }
     }
-
-    //   function mergeChildren(firstChild, secondChild)
-    //     if secondChild != null then
-    //       newChild ← merge(firstChild, secondChild)
-    //       this.children.delete(firstChild)
-    //       this.children.delete(secondChild)
-    //       this.children.add(newChild)
-
-    //   function merge(firstNode, secondNode)
-    //     assert(firstNode.leaf == secondNode.leaf)
-    //     if firstNode.leaf then
-    //       return new SsNode(true,
-    //         points=firstNode.points + secondNode.points)
-    //     else
-    //       return new SsNode(false,
-    //         children=firstNode.children + secondNode.children)
 }
 #[test]
 fn test_search() {
