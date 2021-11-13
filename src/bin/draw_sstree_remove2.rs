@@ -4,33 +4,27 @@ use rand::{random, Rng};
 
 fn main() {
     let mut tree = SsTree::<2, 8>::new(4);
+    let mut rng = rand::thread_rng();
 
-    tree.insert(&[1.0, 1.0]);
-    tree.insert(&[0.0, 0.0]);
-    tree.insert(&[2.0, 2.0]);
-    tree.insert(&[3.0, 3.0]);
+    let mut points = Vec::new();
+    for _ in 0..12 {
+        let point = [rng.gen_range(3f32..10f32), rng.gen_range(3f32..10f32)];
+        tree.insert(&point);
+        points.push(point);
+    }
 
-    println!("{:?}", tree);
+    while !points.is_empty() {
+        let remove_index = rng.gen_range(0..points.len());
+        tree.delete(&points.remove(remove_index));
+        getchar::getchar();
 
-    tree.insert(&[4.0, 4.0]);
-    tree.insert(&[5.0, 5.0]);
-    tree.insert(&[6.0, 6.0]);
-    tree.insert(&[7.0, 7.0]);
-
-    println!("{:?}", tree);
-    tree.insert(&[9.0, 9.0]);
-
-    tree.delete(&[7.0, 7.0]);
-
-    // tree.delete(&[6.0, 6.0]);
-    tree.delete(&[2.0, 2.0]);
-    // tree.insert(&[4.0, 4.0]);
-
-    println!("{:?}", tree);
-    let mut canvas = Canvas::new(1000, 1000);
-    draw_node(&tree.root, &mut canvas, &mut LevelColor::default());
-    println!("drawed");
-    render::save(&canvas, "plot.svg", SvgRenderer::new()).unwrap();
+        println!("{:?}", tree);
+        let mut canvas = Canvas::new(1000, 1000);
+        draw_node(&tree.root, &mut canvas, &mut LevelColor::default());
+        println!("drawn");
+        std::fs::copy("plot.svg", "plot_old.svg");
+        render::save(&canvas, "plot.svg", SvgRenderer::new()).unwrap();
+    }
 }
 
 const SCALE: f32 = 50.0;

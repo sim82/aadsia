@@ -9,3 +9,8 @@ edition = "2021"
 draw = "^0.3"
 arrayvec = "^0.7"
 rand = "^0.8"
+getchar = "^0.1"
+
+
+[profile.release]
+debug = true
