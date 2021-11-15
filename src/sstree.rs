@@ -246,6 +246,35 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
             SsNodeLinks::Leaf(points) => (points.len(), 1),
         }
     }
+    pub fn points_within_radius(&self, center: &[f32; K], radius: f32, out: &mut Vec<[f32; K]>) {
+        match &self.links {
+            SsNodeLinks::Leaf(points) => {
+                for point in points.iter() {
+                    if distance(point, center) < radius {
+                        out.push(*point);
+                    }
+                }
+            }
+            SsNodeLinks::Inner(nodes) => {
+                for child in nodes.iter() {
+                    if distance(&child.centroid, center) <= radius + child.radius {
+                        child.points_within_radius(center, radius, out);
+                    }
+                }
+            }
+        }
+    }
+    // function pointsWithinRegion(node, region)
+    //   points ← []
+    //   if node.leaf then
+    //     for point in node.points do
+    //       if region.intersectsPoint(point) then
+    //         points.insert(point)
+    //   else
+    //    for child in node.children do
+    //       if region.intersectsNode(child) then
+    //         points.insertAll(pointsWithinRegion(child, region))
+    //   return points
 }
 
 fn find_closest_child<'a, const K: usize, const M: usize>(
@@ -329,6 +358,10 @@ impl<const K: usize, const M: usize> SsTree<K, M> {
     pub fn get_fill_factor(&self) -> f32 {
         let (num_points, num_nodes) = self.root.count_nodes();
         num_points as f32 / num_nodes as f32
+    }
+
+    pub fn points_within_radius(&self, center: &[f32; K], radius: f32, out: &mut Vec<[f32; K]>) {
+        self.root.points_within_radius(center, radius, out);
     }
 }
 

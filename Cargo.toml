@@ -10,7 +10,8 @@ draw = "^0.3"
 arrayvec = "^0.7"
 rand = "^0.8"
 getchar = "^0.1"
-
+egui = "^0.15"
+eframe = "^0.15"
 
 [profile.release]
 debug = true

@@ -3,7 +3,7 @@ use draw::{render, Canvas, Color, Drawing, Shape, Style, SvgRenderer, RGB};
 use rand::{random, Rng};
 
 fn main() {
-    let mut tree = SsTree::<2, 8>::new(2);
+    let mut tree = SsTree::<2, 8>::new(4);
 
     tree.insert(&[1.0, 1.0]);
     tree.insert(&[0.0, 0.0]);
@@ -24,9 +24,9 @@ fn main() {
 
     println!("{:?}", tree);
 
-    let mut tree = SsTree::<2, 8>::new(2);
+    let mut tree = SsTree::<2, 8>::new(4);
     let mut rng = rand::thread_rng();
-    for _ in 0..4000 {
+    for _ in 0..4000000 {
         tree.insert(&[
             5f32 + rng.gen::<f32>() * 10f32,
             5f32 + rng.gen::<f32>() * 10f32,
@@ -37,7 +37,7 @@ fn main() {
         tree.get_height(),
         tree.get_fill_factor()
     );
-    // panic!("exit");
+    panic!("exit");
     let mut canvas = Canvas::new(1000, 1000);
     draw_node(&tree.root, &mut canvas, &mut LevelColor::default());
     println!("drawed");
