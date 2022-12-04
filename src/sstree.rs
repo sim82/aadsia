@@ -81,7 +81,6 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                     None
                 }
             }
-            _ => panic!("split link types not allowed"),
         }
     }
 
@@ -92,7 +91,6 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                 child.search_parent_leaf(target)
             }
             SsNodeLinks::Leaf(_) => self,
-            _ => panic!("split link types not allowed"),
         }
     }
 
@@ -186,21 +184,22 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                     self.update_bounding_envelope();
                 }
             }
-            _ => panic!("split link types not allowed"),
         }
         None
     }
 
     pub fn delete(&mut self, target: &[f32; K], m: usize) -> (bool, bool) {
         match &mut self.links {
-            SsNodeLinks::Leaf(points) => {
-                if let Some((i, _)) = points
+            SsNodeLinks::Leaf(elements) => {
+                if let Some((i, _)) = elements
                     .iter()
                     .enumerate()
                     .find(|(_, p)| p.intersects_point(target))
                 {
-                    points.remove(i);
-                    (true, points.len() < m)
+                    elements.remove(i);
+                    let num_elemens = elements.len();
+                    self.update_bounding_envelope();
+                    (true, num_elemens < m)
                 } else {
                     (false, false)
                 }

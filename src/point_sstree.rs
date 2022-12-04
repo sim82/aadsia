@@ -1,5 +1,3 @@
-use std::ops::Index;
-
 use arrayvec::ArrayVec;
 
 #[derive(Debug)]
@@ -56,10 +54,7 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
     pub fn search(&self, target: &[f32; K]) -> Option<&Self> {
         match &self.links {
             SsNodeLinks::Inner(children) => {
-                children
-                    .iter()
-                    .find(|node| node.intersects_point(target))
-                    .map(|node| node)
+                children.iter().find(|node| node.intersects_point(target))
                 // for node in children {
                 //     if node.intersects_points(target) {
                 //         match node.search(target) {
@@ -77,7 +72,6 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                     None
                 }
             }
-            _ => panic!("split link types not allowed"),
         }
     }
 
@@ -88,7 +82,6 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                 child.search_parent_leaf(target)
             }
             SsNodeLinks::Leaf(_) => self,
-            _ => panic!("split link types not allowed"),
         }
     }
 
@@ -179,7 +172,6 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                     self.update_bounding_envelope();
                 }
             }
-            _ => panic!("split link types not allowed"),
         }
         None
     }
@@ -454,8 +446,8 @@ mod leaf {
 
     pub fn centroid_and_radius<const K: usize>(points: &[[f32; K]]) -> ([f32; K], f32) {
         let mut centroid = [0f32; K];
-        for i in 0..K {
-            centroid[i] = mean_along_direction(points, i);
+        for (i, e) in centroid.iter_mut().enumerate() {
+            *e = mean_along_direction(points, i);
         }
 
         let radius = points
