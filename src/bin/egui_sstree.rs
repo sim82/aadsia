@@ -35,7 +35,7 @@ const LOWER_M: usize = 4;
 struct MyEguiApp {
     shapes: Vec<Shape>,
 
-    tree: SsTree<u32, 2, M>,
+    tree: SsTree<u32, [f32; 2], M>,
     max_depth: usize,
     draw_points: bool,
     select: bool,
@@ -131,7 +131,7 @@ impl MyEguiApp {
                 let canvas_pos = from_screen * pointer_pos;
                 println!("interact: {:?}", canvas_pos);
                 self.tree.insert(Element::new(
-                    &[pointer_pos.x, pointer_pos.y],
+                    [pointer_pos.x, pointer_pos.y],
                     self.insert_radius,
                     self.insert_count,
                 ));
@@ -203,9 +203,9 @@ const COLORS: [Color32; 9] = [
     Color32::DARK_BLUE,
 ];
 
-fn draw_tree<const K: usize, const M: usize>(
+fn draw_tree<const M: usize>(
     shapes: &mut Vec<Shape>,
-    node: &aadsia::sstree::SsNode<u32, K, M>,
+    node: &aadsia::sstree::SsNode<u32, [f32; 2], M>,
     max_level: usize,
     draw_points: bool,
 ) {
