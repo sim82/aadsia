@@ -1,6 +1,6 @@
 use arrayvec::ArrayVec;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub struct Element<const K: usize> {
     pub center: [f32; K],
     pub radius: f32,
@@ -102,31 +102,29 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
         self.centroid = centroid;
         self.radius = radius;
     }
-    pub fn insert(&mut self, element: &Element<K>, m: usize) -> Option<(Self, Self)> {
+    pub fn insert(&mut self, element: Element<K>, m: usize) -> Option<(Self, Self)> {
         match &mut self.links {
             SsNodeLinks::Leaf(points) => {
-                if points.iter().any(|p| *p == *element) {
+                if points.iter().any(|p| *p == element) {
                     return None;
                 }
 
                 if points.len() < M {
-                    points.push(element.clone());
+                    points.push(element);
                     self.update_bounding_envelope();
                     return None;
                 } else {
                     let mut nodes_to_split = points
                         .drain(..)
-                        .chain(std::iter::once(element.clone()))
+                        .chain(std::iter::once(element))
                         .collect::<Vec<_>>();
 
                     let split_index = leaf::find_split_index(&mut nodes_to_split, m);
-                    let points1: ArrayVec<_, M> =
-                        nodes_to_split[..split_index].iter().cloned().collect();
-                    let (centroid1, radius1) = leaf::centroid_and_radius(&points1);
-
-                    let points2: ArrayVec<_, M> =
-                        nodes_to_split[split_index..].iter().cloned().collect();
+                    let points2: ArrayVec<_, M> = nodes_to_split.drain(split_index..).collect();
                     let (centroid2, radius2) = leaf::centroid_and_radius(&points2);
+
+                    let points1: ArrayVec<_, M> = nodes_to_split.drain(..split_index).collect();
+                    let (centroid1, radius1) = leaf::centroid_and_radius(&points1);
 
                     let new_node1 = Self {
                         centroid: centroid1,
@@ -259,17 +257,17 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
             SsNodeLinks::Leaf(points) => (points.len(), 1),
         }
     }
-    pub fn elements_within_radius(
-        &self,
+    pub fn elements_within_radius<'a>(
+        &'a self,
         center: &[f32; K],
         radius: f32,
-        out: &mut Vec<Element<K>>,
+        out: &mut Vec<&'a Element<K>>,
     ) {
         match &self.links {
             SsNodeLinks::Leaf(points) => {
                 for point in points.iter() {
                     if distance(&point.center, center) < (radius + point.radius) {
-                        out.push(point.clone());
+                        out.push(point);
                     }
                 }
             }
@@ -352,7 +350,7 @@ impl<const K: usize, const M: usize> SsTree<K, M> {
         }
     }
 
-    pub fn insert(&mut self, element: &Element<K>) {
+    pub fn insert(&mut self, element: Element<K>) {
         if let Some((new_child_1, new_child_2)) = self.root.insert(element, self.m) {
             let mut nodes = ArrayVec::<_, M>::new();
             nodes.push(new_child_1);
@@ -390,7 +388,12 @@ impl<const K: usize, const M: usize> SsTree<K, M> {
         num_points as f32 / num_nodes as f32
     }
 
-    pub fn points_within_radius(&self, center: &[f32; K], radius: f32, out: &mut Vec<Element<K>>) {
+    pub fn points_within_radius<'a>(
+        &'a self,
+        center: &[f32; K],
+        radius: f32,
+        out: &mut Vec<&'a Element<K>>,
+    ) {
         self.root.elements_within_radius(center, radius, out);
     }
 }
@@ -784,16 +787,16 @@ fn test_search() {
 
     let mut tree = SsTree::<2, UPPER_M>::new(LOWER_M);
 
-    tree.insert(&Element::new(&[0.0, 0.0], 1.0));
-    tree.insert(&Element::new(&[5.0, 5.0], 1.0));
+    tree.insert(Element::new(&[0.0, 0.0], 1.0));
+    tree.insert(Element::new(&[5.0, 5.0], 1.0));
 
     let mut out = Vec::new();
     tree.points_within_radius(&[0.5, 0.5], 1.0, &mut out);
-    assert_eq!(out, vec!(Element::new(&[0.0, 0.0], 1.0)));
+    assert_eq!(out, vec!(&Element::new(&[0.0, 0.0], 1.0)));
 
     let mut out = Vec::new();
     tree.points_within_radius(&[4.5, 5.5], 1.0, &mut out);
-    assert_eq!(out, vec!(Element::new(&[5.0, 5.0], 1.0)));
+    assert_eq!(out, vec!(&Element::new(&[5.0, 5.0], 1.0)));
     let mut out = Vec::new();
 
     // do search between the elements with radius big enough to just reach them
@@ -803,8 +806,8 @@ fn test_search() {
         &mut out,
     );
     assert_eq!(out.len(), 2);
-    assert!(out.contains(&Element::new(&[5.0, 5.0], 1.0)));
-    assert!(out.contains(&Element::new(&[0.0, 0.0], 1.0)));
+    assert!(out.contains(&&Element::new(&[5.0, 5.0], 1.0)));
+    assert!(out.contains(&&Element::new(&[0.0, 0.0], 1.0)));
 
     let mut out = Vec::new();
 

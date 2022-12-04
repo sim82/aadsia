@@ -117,8 +117,9 @@ impl MyEguiApp {
                 println!("selected: {} in {:?}", selected.len(), start.elapsed());
                 let start = Instant::now();
                 changed = !selected.is_empty();
-                for point in selected {
-                    self.tree.delete(&point.center); // FIXME: we probably want to delete by identity
+                let centers = selected.drain(..).map(|e| e.center).collect::<Vec<_>>();
+                for point in centers {
+                    self.tree.delete(&point); // FIXME: we probably want to delete by identity
                 }
                 println!("deleted: {:?}", start.elapsed());
             }
@@ -128,7 +129,7 @@ impl MyEguiApp {
             if let Some(pointer_pos) = response.interact_pointer_pos() {
                 let canvas_pos = from_screen * pointer_pos;
                 println!("interact: {:?}", canvas_pos);
-                self.tree.insert(&Element::new(
+                self.tree.insert(Element::new(
                     &[pointer_pos.x, pointer_pos.y],
                     self.insert_radius,
                 ));
@@ -255,12 +256,12 @@ fn main() {
     let mut tree = SsTree::new(LOWER_M);
     let mut rng = rand::thread_rng();
 
-    for _ in 0..100000 {
-        tree.insert(&Element::new(
-            &[rng.gen_range(200.0..600.0), rng.gen_range(200.0..600.0)],
-            2.0,
-        ));
-    }
+    // for _ in 0..100000 {
+    //     tree.insert(Element::new(
+    //         &[rng.gen_range(200.0..600.0), rng.gen_range(200.0..600.0)],
+    //         2.0,
+    //     ));
+    // }
 
     let app = MyEguiApp {
         shapes: Vec::new(),
