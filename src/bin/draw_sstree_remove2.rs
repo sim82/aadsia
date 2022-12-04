@@ -1,4 +1,4 @@
-use aadsia::sstree::{SsNode, SsTree};
+use aadsia::point_sstree::{SsNode, SsTree};
 use draw::{render, Canvas, Color, Drawing, LineBuilder, Shape, Style, SvgRenderer, RGB};
 use rand::{random, Rng};
 
@@ -113,14 +113,14 @@ fn draw_node<const K: usize, const M: usize>(
         .with_style(Style::stroked(1, color));
     canvas.display_list.add(center_cross);
     match &node.links {
-        aadsia::sstree::SsNodeLinks::Inner(nodes) => {
+        aadsia::point_sstree::SsNodeLinks::Inner(nodes) => {
             level_color.inc();
             for node in nodes.iter() {
                 draw_node(node, canvas, level_color);
             }
             level_color.dec();
         }
-        aadsia::sstree::SsNodeLinks::Leaf(points) => {
+        aadsia::point_sstree::SsNodeLinks::Leaf(points) => {
             if !false {
                 for point in points.iter() {
                     let point_drawing = Drawing::new()

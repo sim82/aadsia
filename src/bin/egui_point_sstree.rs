@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use aadsia::sstree::{Element, SsTree};
+use aadsia::point_sstree::SsTree;
 use eframe::epi;
 use egui::{emath, util::cache::CacheTrait, Color32, Frame, Pos2, Rect, Sense, Shape, Stroke};
 use rand::Rng;
@@ -28,8 +28,8 @@ impl Select {
     }
 }
 
-const M: usize = 8;
-const LOWER_M: usize = 4;
+const M: usize = 32;
+const LOWER_M: usize = 16;
 
 #[derive(Default)]
 struct MyEguiApp {
@@ -42,8 +42,6 @@ struct MyEguiApp {
     select: bool,
     select_tool: Option<Select>,
     delete: bool,
-
-    insert_radius: f32,
 }
 
 impl epi::App for MyEguiApp {
@@ -53,7 +51,6 @@ impl epi::App for MyEguiApp {
             let res2 = ui.add(egui::Checkbox::new(&mut self.draw_points, "points"));
             let res_select = ui.add(egui::Checkbox::new(&mut self.select, "select"));
             let res_delete = ui.add(egui::Checkbox::new(&mut self.delete, "delete"));
-            ui.add(egui::Slider::new(&mut self.insert_radius, 1.0..=20.0));
 
             // println!("res: {:?}", res);
             Frame::dark_canvas(ui.style()).show(ui, |ui| {
@@ -110,7 +107,7 @@ impl MyEguiApp {
                 let start = Instant::now();
                 changed = !selected.is_empty();
                 for point in selected {
-                    self.tree.delete(&point.center); // FIXME: we probably want to delete by identity
+                    self.tree.delete(&point);
                 }
                 println!("deleted: {:?}", start.elapsed());
             }
@@ -119,10 +116,7 @@ impl MyEguiApp {
             if let Some(pointer_pos) = response.interact_pointer_pos() {
                 let canvas_pos = from_screen * pointer_pos;
                 println!("interact: {:?}", canvas_pos);
-                self.tree.insert(&Element::new(
-                    &[pointer_pos.x, pointer_pos.y],
-                    self.insert_radius,
-                ));
+                self.tree.insert(&[pointer_pos.x, pointer_pos.y]);
                 changed = true;
                 // self.shapes
                 //     .push(egui::Shape::circle_stroke(pointer_pos, 10.0, self.stroke));
@@ -168,8 +162,8 @@ impl MyEguiApp {
                 selected
                     .iter()
                     .map(|p| {
-                        let center = Pos2::new(p.center[0], p.center[1]);
-                        egui::Shape::circle_filled(center, p.radius + 0.5, Color32::BLUE)
+                        let center = Pos2::new(p[0], p[1]);
+                        egui::Shape::circle_filled(center, 1.5, Color32::BLUE)
                     })
                     .collect(),
             );
@@ -193,7 +187,7 @@ const COLORS: [Color32; 9] = [
 
 fn draw_tree<const K: usize, const M: usize>(
     shapes: &mut Vec<Shape>,
-    node: &aadsia::sstree::SsNode<K, M>,
+    node: &aadsia::point_sstree::SsNode<K, M>,
     level: usize,
     max_level: usize,
     draw_points: bool,
@@ -217,19 +211,19 @@ fn draw_tree<const K: usize, const M: usize>(
     // canvas.display_list.add(circle);
 
     match &node.links {
-        aadsia::sstree::SsNodeLinks::Inner(nodes) => {
+        aadsia::point_sstree::SsNodeLinks::Inner(nodes) => {
             // level_color.inc();
             for node in nodes.iter() {
                 draw_tree(shapes, node, level + 1, max_level, draw_points);
             }
             // level_color.dec();
         }
-        aadsia::sstree::SsNodeLinks::Leaf(points) => {
+        aadsia::point_sstree::SsNodeLinks::Leaf(points) => {
             if draw_points {
                 for point in points.iter() {
                     let point = egui::Shape::circle_filled(
-                        Pos2::new(point.center[0], point.center[1]),
-                        point.radius,
+                        Pos2::new(point[0], point[1]),
+                        1.0,
                         Color32::WHITE,
                     );
                     shapes.push(point);
@@ -255,13 +249,12 @@ fn main() {
     let app = MyEguiApp {
         stroke: Stroke::new(1.0, Color32::LIGHT_BLUE),
         shapes: Vec::new(),
-        tree,
+        tree: tree,
         max_depth: 2,
         draw_points: true,
         select: false,
         select_tool: None,
         delete: false,
-        insert_radius: 5.0,
     };
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(Box::new(app), native_options);
