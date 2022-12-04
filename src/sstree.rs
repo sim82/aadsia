@@ -1,16 +1,24 @@
 use arrayvec::ArrayVec;
 
-#[derive(Debug, PartialEq)]
-pub struct Element<const K: usize> {
+#[derive(Debug)]
+pub struct Element<P, const K: usize> {
     pub center: [f32; K],
     pub radius: f32,
+    pub payload: P,
 }
 
-impl<const K: usize> Element<K> {
-    pub fn new(center: &[f32; K], radius: f32) -> Self {
+impl<P, const K: usize> PartialEq for Element<P, K> {
+    fn eq(&self, other: &Self) -> bool {
+        self.center == other.center && self.radius == other.radius
+    }
+}
+
+impl<P, const K: usize> Element<P, K> {
+    pub fn new(center: &[f32; K], radius: f32, payload: P) -> Self {
         Self {
             center: *center,
             radius,
+            payload,
         }
     }
     pub fn intersects_point(&self, target: &[f32; K]) -> bool {
@@ -19,16 +27,16 @@ impl<const K: usize> Element<K> {
 }
 
 #[derive(Debug)]
-pub enum SsNodeLinks<const K: usize, const M: usize> {
-    Inner(Box<ArrayVec<SsNode<K, M>, M>>),
-    Leaf(Box<ArrayVec<Element<K>, M>>),
+pub enum SsNodeLinks<P, const K: usize, const M: usize> {
+    Inner(Box<ArrayVec<SsNode<P, K, M>, M>>),
+    Leaf(Box<ArrayVec<Element<P, K>, M>>),
 }
 
 #[derive(Debug)]
-pub struct SsNode<const K: usize, const M: usize> {
+pub struct SsNode<P, const K: usize, const M: usize> {
     pub centroid: [f32; K],
     pub radius: f32,
-    pub links: SsNodeLinks<K, M>,
+    pub links: SsNodeLinks<P, K, M>,
 }
 
 fn distance<const K: usize>(p1: &[f32; K], p2: &[f32; K]) -> f32 {
@@ -46,8 +54,8 @@ fn test_distance() {
     assert_eq!(distance(&[1000.0, -1000.0], &[1000.0, 2000.0]), 3000.0);
 }
 
-impl<const K: usize, const M: usize> SsNode<K, M> {
-    pub fn from_elements(elements: ArrayVec<Element<K>, M>) -> Self {
+impl<P, const K: usize, const M: usize> SsNode<P, K, M> {
+    pub fn from_elements(elements: ArrayVec<Element<P, K>, M>) -> Self {
         let (centroid, radius) = leaf::centroid_and_radius(&elements);
         Self {
             centroid,
@@ -102,7 +110,7 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
         self.centroid = centroid;
         self.radius = radius;
     }
-    pub fn insert(&mut self, element: Element<K>, m: usize) -> Option<(Self, Self)> {
+    pub fn insert(&mut self, element: Element<P, K>, m: usize) -> Option<(Self, Self)> {
         match &mut self.links {
             SsNodeLinks::Leaf(points) => {
                 if points.iter().any(|p| *p == element) {
@@ -261,7 +269,7 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
         &'a self,
         center: &[f32; K],
         radius: f32,
-        out: &mut Vec<&'a Element<K>>,
+        out: &mut Vec<&'a Element<P, K>>,
     ) {
         match &self.links {
             SsNodeLinks::Leaf(points) => {
@@ -293,10 +301,10 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
     //   return points
 }
 
-fn find_closest_child<'a, const K: usize, const M: usize>(
-    children: &'a [SsNode<K, M>],
+fn find_closest_child<'a, P, const K: usize, const M: usize>(
+    children: &'a [SsNode<P, K, M>],
     target: &[f32; K],
-) -> &'a SsNode<K, M> {
+) -> &'a SsNode<P, K, M> {
     // children
     //     .iter()
     //     .min_by_key(|a| distance(&a.centroid, target))
@@ -314,8 +322,8 @@ fn find_closest_child<'a, const K: usize, const M: usize>(
     }
     cur_min.unwrap()
 }
-fn find_closest_child_index<const K: usize, const M: usize>(
-    children: &[SsNode<K, M>],
+fn find_closest_child_index<P, const K: usize, const M: usize>(
+    children: &[SsNode<P, K, M>],
     target: &[f32; K],
 ) -> usize {
     let mut min_dist = f32::MAX;
@@ -331,13 +339,13 @@ fn find_closest_child_index<const K: usize, const M: usize>(
 }
 
 #[derive(Debug)]
-pub struct SsTree<const K: usize, const M: usize> {
-    pub root: SsNode<K, M>,
+pub struct SsTree<P, const K: usize, const M: usize> {
+    pub root: SsNode<P, K, M>,
     height: usize,
     m: usize,
 }
 
-impl<const K: usize, const M: usize> SsTree<K, M> {
+impl<P, const K: usize, const M: usize> SsTree<P, K, M> {
     pub fn new(m: usize) -> Self {
         Self {
             root: SsNode {
@@ -350,7 +358,7 @@ impl<const K: usize, const M: usize> SsTree<K, M> {
         }
     }
 
-    pub fn insert(&mut self, element: Element<K>) {
+    pub fn insert(&mut self, element: Element<P, K>) {
         if let Some((new_child_1, new_child_2)) = self.root.insert(element, self.m) {
             let mut nodes = ArrayVec::<_, M>::new();
             nodes.push(new_child_1);
@@ -392,13 +400,13 @@ impl<const K: usize, const M: usize> SsTree<K, M> {
         &'a self,
         center: &[f32; K],
         radius: f32,
-        out: &mut Vec<&'a Element<K>>,
+        out: &mut Vec<&'a Element<P, K>>,
     ) {
         self.root.elements_within_radius(center, radius, out);
     }
 }
 
-impl<const K: usize, const M: usize> Default for SsTree<K, M> {
+impl<P, const K: usize, const M: usize> Default for SsTree<P, K, M> {
     fn default() -> Self {
         Self::new(M / 2)
     }
@@ -406,8 +414,8 @@ impl<const K: usize, const M: usize> Default for SsTree<K, M> {
 
 mod leaf {
     use super::{distance, Element};
-    pub fn mean_along_direction<const K: usize>(
-        elements: &[Element<K>],
+    pub fn mean_along_direction<P, const K: usize>(
+        elements: &[Element<P, K>],
         direction_index: usize,
     ) -> f32 {
         assert!(!elements.is_empty());
@@ -419,8 +427,8 @@ mod leaf {
         sum / count
     }
 
-    pub fn variance_along_direction<const K: usize>(
-        elements: &[Element<K>],
+    pub fn variance_along_direction<P, const K: usize>(
+        elements: &[Element<P, K>],
         direction_index: usize,
     ) -> f32 {
         assert!(!elements.is_empty());
@@ -437,7 +445,7 @@ mod leaf {
             / count
     }
 
-    pub fn direction_of_max_variance<const K: usize>(elements: &[Element<K>]) -> usize {
+    pub fn direction_of_max_variance<P, const K: usize>(elements: &[Element<P, K>]) -> usize {
         let mut max_variance = 0.0;
         let mut direction_index = 0;
         for i in 0..K {
@@ -494,7 +502,7 @@ mod leaf {
     //     direction_index
     // }
 
-    pub fn find_split_index<const K: usize>(elements: &mut [Element<K>], m: usize) -> usize {
+    pub fn find_split_index<P, const K: usize>(elements: &mut [Element<P, K>], m: usize) -> usize {
         let coordinate_index = direction_of_max_variance(elements);
         elements.sort_by(|p1, p2| {
             p1.center[coordinate_index]
@@ -515,7 +523,7 @@ mod leaf {
         split_index
     }
 
-    pub fn centroid_and_radius<const K: usize>(elements: &[Element<K>]) -> ([f32; K], f32) {
+    pub fn centroid_and_radius<P, const K: usize>(elements: &[Element<P, K>]) -> ([f32; K], f32) {
         let mut centroid = [0f32; K];
         for (i, c) in centroid.iter_mut().enumerate().take(K) {
             *c = mean_along_direction(elements, i);
@@ -536,8 +544,8 @@ mod inner {
 
     use super::{distance, SsNode, SsNodeLinks};
 
-    pub fn find_split_index<const K: usize, const M: usize>(
-        nodes: &mut [SsNode<K, M>],
+    pub fn find_split_index<P, const K: usize, const M: usize>(
+        nodes: &mut [SsNode<P, K, M>],
         m: usize,
     ) -> usize {
         let coordinate_index = direction_of_max_variance(nodes);
@@ -560,8 +568,8 @@ mod inner {
         split_index
     }
 
-    pub fn centroid_and_radius<const K: usize, const M: usize>(
-        nodes: &[SsNode<K, M>],
+    pub fn centroid_and_radius<P, const K: usize, const M: usize>(
+        nodes: &[SsNode<P, K, M>],
     ) -> ([f32; K], f32) {
         let mut centroid = [0f32; K];
         for (i, c) in centroid.iter_mut().enumerate().take(K) {
@@ -578,8 +586,8 @@ mod inner {
         (centroid, radius)
     }
 
-    pub fn mean_along_direction<const K: usize, const M: usize>(
-        points: &[SsNode<K, M>],
+    pub fn mean_along_direction<P, const K: usize, const M: usize>(
+        points: &[SsNode<P, K, M>],
         direction_index: usize,
     ) -> f32 {
         assert!(!points.is_empty());
@@ -607,8 +615,8 @@ mod inner {
     //     sum
     // }
 
-    pub fn variance_along_direction<const K: usize, const M: usize>(
-        points: &[SsNode<K, M>],
+    pub fn variance_along_direction<P, const K: usize, const M: usize>(
+        points: &[SsNode<P, K, M>],
         direction_index: usize,
     ) -> f32 {
         assert!(!points.is_empty());
@@ -625,8 +633,8 @@ mod inner {
             / count
     }
 
-    pub fn direction_of_max_variance<const K: usize, const M: usize>(
-        nodes: &[SsNode<K, M>],
+    pub fn direction_of_max_variance<P, const K: usize, const M: usize>(
+        nodes: &[SsNode<P, K, M>],
     ) -> usize {
         let mut max_variance = 0.0;
         let mut direction_index = 0;
@@ -640,8 +648,8 @@ mod inner {
         direction_index
     }
 
-    pub fn find_sibling_to_borrow_from<const K: usize, const M: usize>(
-        nodes: &[SsNode<K, M>],
+    pub fn find_sibling_to_borrow_from<P, const K: usize, const M: usize>(
+        nodes: &[SsNode<P, K, M>],
         node_to_fix: usize,
         m: usize,
     ) -> Option<usize> {
@@ -667,8 +675,8 @@ mod inner {
         closest_sibling
     }
 
-    pub fn borrow_from_sibling<const K: usize, const M: usize>(
-        nodes: &mut [SsNode<K, M>],
+    pub fn borrow_from_sibling<P, const K: usize, const M: usize>(
+        nodes: &mut [SsNode<P, K, M>],
         node_to_fix: usize,
 
         sibling_to_borrow_from: usize,
@@ -721,8 +729,8 @@ mod inner {
         }
     }
 
-    pub fn find_sibling_to_merge_to<const K: usize, const M: usize>(
-        nodes: &[SsNode<K, M>],
+    pub fn find_sibling_to_merge_to<P, const K: usize, const M: usize>(
+        nodes: &[SsNode<P, K, M>],
         node_to_fix: usize,
         m: usize,
     ) -> Option<usize> {
@@ -748,8 +756,8 @@ mod inner {
         closest_sibling
     }
 
-    pub fn merge_siblings<const K: usize, const M: usize>(
-        nodes: &mut ArrayVec<SsNode<K, M>, M>,
+    pub fn merge_siblings<P, const K: usize, const M: usize>(
+        nodes: &mut ArrayVec<SsNode<P, K, M>, M>,
         mut node_index_1: usize,
         mut node_index_2: usize,
     ) {
@@ -763,18 +771,18 @@ mod inner {
         nodes.push(node);
     }
 
-    fn merge<const K: usize, const M: usize>(
-        node_1: SsNode<K, M>,
-        node_2: SsNode<K, M>,
-    ) -> SsNode<K, M> {
+    fn merge<P, const K: usize, const M: usize>(
+        node_1: SsNode<P, K, M>,
+        node_2: SsNode<P, K, M>,
+    ) -> SsNode<P, K, M> {
         match (node_1.links, node_2.links) {
             (SsNodeLinks::Leaf(mut points1), SsNodeLinks::Leaf(mut points2)) => {
                 points1.extend(points2.drain(..));
-                SsNode::<K, M>::from_elements(*points1)
+                SsNode::<P, K, M>::from_elements(*points1)
             }
             (SsNodeLinks::Inner(mut nodes1), SsNodeLinks::Inner(mut nodes2)) => {
                 nodes1.extend(nodes2.drain(..));
-                SsNode::<K, M>::from_nodes(*nodes1)
+                SsNode::<P, K, M>::from_nodes(*nodes1)
             }
             _ => panic!("inconsistent siblings"),
         }
@@ -785,18 +793,18 @@ fn test_search() {
     const UPPER_M: usize = 8;
     const LOWER_M: usize = 4;
 
-    let mut tree = SsTree::<2, UPPER_M>::new(LOWER_M);
+    let mut tree = SsTree::<(), 2, UPPER_M>::new(LOWER_M);
 
-    tree.insert(Element::new(&[0.0, 0.0], 1.0));
-    tree.insert(Element::new(&[5.0, 5.0], 1.0));
+    tree.insert(Element::new(&[0.0, 0.0], 1.0, ()));
+    tree.insert(Element::new(&[5.0, 5.0], 1.0, ()));
 
     let mut out = Vec::new();
     tree.points_within_radius(&[0.5, 0.5], 1.0, &mut out);
-    assert_eq!(out, vec!(&Element::new(&[0.0, 0.0], 1.0)));
+    assert_eq!(out, vec!(&Element::new(&[0.0, 0.0], 1.0, ())));
 
     let mut out = Vec::new();
     tree.points_within_radius(&[4.5, 5.5], 1.0, &mut out);
-    assert_eq!(out, vec!(&Element::new(&[5.0, 5.0], 1.0)));
+    assert_eq!(out, vec!(&Element::new(&[5.0, 5.0], 1.0, ())));
     let mut out = Vec::new();
 
     // do search between the elements with radius big enough to just reach them
@@ -806,8 +814,8 @@ fn test_search() {
         &mut out,
     );
     assert_eq!(out.len(), 2);
-    assert!(out.contains(&&Element::new(&[5.0, 5.0], 1.0)));
-    assert!(out.contains(&&Element::new(&[0.0, 0.0], 1.0)));
+    assert!(out.contains(&&Element::new(&[5.0, 5.0], 1.0, ())));
+    assert!(out.contains(&&Element::new(&[0.0, 0.0], 1.0, ())));
 
     let mut out = Vec::new();
 

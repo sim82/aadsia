@@ -35,7 +35,7 @@ const LOWER_M: usize = 4;
 struct MyEguiApp {
     shapes: Vec<Shape>,
 
-    tree: SsTree<2, M>,
+    tree: SsTree<u32, 2, M>,
     max_depth: usize,
     draw_points: bool,
     select: bool,
@@ -44,6 +44,7 @@ struct MyEguiApp {
     smear: bool,
     delete_radius: f32,
     insert_radius: f32,
+    insert_count: u32,
 }
 
 impl epi::App for MyEguiApp {
@@ -132,7 +133,9 @@ impl MyEguiApp {
                 self.tree.insert(Element::new(
                     &[pointer_pos.x, pointer_pos.y],
                     self.insert_radius,
+                    self.insert_count,
                 ));
+                self.insert_count += 1;
                 changed = true;
                 // self.shapes
                 //     .push(egui::Shape::circle_stroke(pointer_pos, 10.0, self.stroke));
@@ -202,7 +205,7 @@ const COLORS: [Color32; 9] = [
 
 fn draw_tree<const K: usize, const M: usize>(
     shapes: &mut Vec<Shape>,
-    node: &aadsia::sstree::SsNode<K, M>,
+    node: &aadsia::sstree::SsNode<u32, K, M>,
     max_level: usize,
     draw_points: bool,
 ) {
@@ -274,6 +277,7 @@ fn main() {
         smear: false,
         insert_radius: 5.0,
         delete_radius: 20.0,
+        insert_count: 0,
     };
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(Box::new(app), native_options);
