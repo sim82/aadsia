@@ -230,6 +230,9 @@ impl<const K: usize, const M: usize> SsNode<K, M> {
                             // no sibling to borrow from -> merge
                             inner::merge_siblings(nodes, node_to_fix, sibling_to_merge_to);
                         }
+                        //  else {
+                        //     panic!("cannot borrow / merge");
+                        // }
                         (true, nodes.len() < m)
                     }
                 }
@@ -349,7 +352,17 @@ impl<const K: usize, const M: usize> SsTree<K, M> {
         }
     }
     pub fn delete(&mut self, point: &[f32; K]) {
-        self.root.delete(point, self.m);
+        let (_deleted, violiates_invariant) = self.root.delete(point, self.m);
+        if false && violiates_invariant {
+            println!("violate invariant at root!");
+            match &mut self.root.links {
+                SsNodeLinks::Leaf(leafs) => println!("leafs: {}", leafs.len()),
+                SsNodeLinks::Inner(nodes) => {
+                    println!("nodes: {}", nodes.len());
+                    self.root = nodes.pop().unwrap();
+                }
+            }
+        }
     }
 
     pub fn get_height(&self) -> usize {
@@ -626,10 +639,10 @@ mod inner {
                         closest_point_dist = distance;
                     }
                 }
-                println!(
-                    "closest point: {:?} {} {}",
-                    closest_point, sibling_to_borrow_from, node_to_fix
-                );
+                // println!(
+                //     "closest point: {:?} {} {}",
+                //     closest_point, sibling_to_borrow_from, node_to_fix
+                // );
                 let point = points.remove(closest_point.unwrap());
                 nodes[sibling_to_borrow_from].update_bounding_envelope();
                 match &mut nodes[node_to_fix].links {

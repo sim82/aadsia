@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use aadsia::sstree::SsTree;
 use eframe::epi;
 use egui::{emath, util::cache::CacheTrait, Color32, Frame, Pos2, Rect, Sense, Shape, Stroke};
@@ -6,6 +8,10 @@ use rand::Rng;
 struct Select {
     center: Pos2,
     radius: f32,
+}
+
+fn pos2_to_array(pos: &Pos2) -> [f32; 2] {
+    [pos.x, pos.y]
 }
 
 impl Select {
@@ -22,16 +28,20 @@ impl Select {
     }
 }
 
+const M: usize = 32;
+const LOWER_M: usize = 16;
+
 #[derive(Default)]
 struct MyEguiApp {
     stroke: Stroke,
     shapes: Vec<Shape>,
 
-    tree: SsTree<2, 8>,
+    tree: SsTree<2, M>,
     max_depth: usize,
     draw_points: bool,
     select: bool,
     select_tool: Option<Select>,
+    delete: bool,
 }
 
 impl epi::App for MyEguiApp {
@@ -40,8 +50,9 @@ impl epi::App for MyEguiApp {
             let res = ui.add(egui::Slider::new(&mut self.max_depth, 0..=6));
             let res2 = ui.add(egui::Checkbox::new(&mut self.draw_points, "points"));
             let res_select = ui.add(egui::Checkbox::new(&mut self.select, "select"));
+            let res_delete = ui.add(egui::Checkbox::new(&mut self.delete, "delete"));
 
-            println!("res: {:?}", res);
+            // println!("res: {:?}", res);
             Frame::dark_canvas(ui.style()).show(ui, |ui| {
                 self.ui_canvas(ui, res.changed() || res2.changed());
             });
@@ -83,6 +94,23 @@ impl MyEguiApp {
                     );
                 }
             }
+        } else if self.delete {
+            if response.dragged() {
+                let start = Instant::now();
+                let mut selected = Vec::new();
+                self.tree.points_within_radius(
+                    &pos2_to_array(&response.interact_pointer_pos().unwrap()),
+                    100.0,
+                    &mut selected,
+                );
+                println!("selected: {} in {:?}", selected.len(), start.elapsed());
+                let start = Instant::now();
+                changed = !selected.is_empty();
+                for point in selected {
+                    self.tree.delete(&point);
+                }
+                println!("deleted: {:?}", start.elapsed());
+            }
         } else {
             let from_screen = to_screen.inverse();
             if let Some(pointer_pos) = response.interact_pointer_pos() {
@@ -121,12 +149,14 @@ impl MyEguiApp {
             ));
 
             let mut selected = Vec::new();
+
+            let start = Instant::now();
             self.tree.points_within_radius(
                 &[select_tool.center.x, select_tool.center.y],
                 select_tool.radius,
                 &mut selected,
             );
-            println!("selected: {}", selected.len());
+            println!("selected: {} {:?}", selected.len(), start.elapsed());
 
             painter.extend(
                 selected
@@ -209,12 +239,12 @@ fn draw_tree<const K: usize, const M: usize>(
 }
 
 fn main() {
-    let mut tree = SsTree::new(4);
+    let mut tree = SsTree::new(LOWER_M);
     let mut rng = rand::thread_rng();
 
-    for _ in 0..100000 {
-        tree.insert(&[rng.gen_range(200.0..600.0), rng.gen_range(300.0..700.0)]);
-    }
+    // for _ in 0..1000000 {
+    //     tree.insert(&[rng.gen_range(200.0..600.0), rng.gen_range(200.0..600.0)]);
+    // }
 
     let app = MyEguiApp {
         stroke: Stroke::new(1.0, Color32::LIGHT_BLUE),
@@ -224,6 +254,7 @@ fn main() {
         draw_points: true,
         select: false,
         select_tool: None,
+        delete: false,
     };
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(Box::new(app), native_options);
