@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use aadsia::sstree::{Element, SsTree};
 use eframe::epi;
-use egui::{emath, util::cache::CacheTrait, Color32, Frame, Pos2, Rect, Sense, Shape, Stroke};
+use egui::{emath, Color32, Frame, Pos2, Rect, Sense, Shape, Stroke};
 use rand::Rng;
 
 struct Select {
@@ -33,7 +33,6 @@ const LOWER_M: usize = 4;
 
 #[derive(Default)]
 struct MyEguiApp {
-    stroke: Stroke,
     shapes: Vec<Shape>,
 
     tree: SsTree<2, M>,
@@ -48,12 +47,12 @@ struct MyEguiApp {
 }
 
 impl epi::App for MyEguiApp {
-    fn update(&mut self, ctx: &egui::CtxRef, frame: &mut epi::Frame<'_>) {
+    fn update(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
         egui::CentralPanel::default().show(ctx, |ui| {
             let res = ui.add(egui::Slider::new(&mut self.max_depth, 0..=6));
             let res2 = ui.add(egui::Checkbox::new(&mut self.draw_points, "points"));
-            let res_select = ui.add(egui::Checkbox::new(&mut self.select, "select"));
-            let res_delete = ui.add(egui::Checkbox::new(&mut self.delete, "delete"));
+            ui.add(egui::Checkbox::new(&mut self.select, "select"));
+            ui.add(egui::Checkbox::new(&mut self.delete, "delete"));
             ui.add(egui::Checkbox::new(&mut self.smear, "smear"));
             ui.add(egui::Slider::new(&mut self.insert_radius, 1.0..=20.0));
             ui.add(egui::Slider::new(&mut self.delete_radius, 5.0..=100.0).text("delete radius"));
@@ -256,15 +255,14 @@ fn main() {
     let mut tree = SsTree::new(LOWER_M);
     let mut rng = rand::thread_rng();
 
-    // for _ in 0..1000000 {
-    //     tree.insert(&Element::new(
-    //         &[rng.gen_range(200.0..600.0), rng.gen_range(200.0..600.0)],
-    //         2.0,
-    //     ));
-    // }
+    for _ in 0..100000 {
+        tree.insert(&Element::new(
+            &[rng.gen_range(200.0..600.0), rng.gen_range(200.0..600.0)],
+            2.0,
+        ));
+    }
 
     let app = MyEguiApp {
-        stroke: Stroke::new(1.0, Color32::LIGHT_BLUE),
         shapes: Vec::new(),
         tree,
         max_depth: 2,
