@@ -409,18 +409,19 @@ impl<P, K: Default + Distance + DimComponent + PartialEq, const M: usize> SsTree
     }
     #[allow(clippy::overly_complex_bool_expr)]
     pub fn delete(&mut self, point: &K) {
-        let (_deleted, violiates_invariant) = self.root.delete(point, self.m);
+        let (_deleted, _violiates_invariant) = self.root.delete(point, self.m);
 
-        if false && violiates_invariant {
-            println!("violate invariant at root!");
-            match &mut self.root.links {
-                SsNodeLinks::Leaf(leafs) => println!("leafs: {}", leafs.len()),
-                SsNodeLinks::Inner(nodes) => {
-                    println!("nodes: {}", nodes.len());
-                    self.root = nodes.pop().unwrap();
-                }
+        // if violiates_invariant {
+        // println!("violate invariant at root!");
+        match &mut self.root.links {
+            // SsNodeLinks::Leaf(leafs) => (), //println!("leafs: {}", leafs.len()),
+            SsNodeLinks::Inner(nodes) if nodes.len() == 1 => {
+                // println!("nodes: {}", nodes.len());
+                self.root = nodes.pop().unwrap();
             }
+            _ => (),
         }
+        // }
     }
 
     pub fn get_height(&self) -> usize {
