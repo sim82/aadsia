@@ -4,68 +4,14 @@ pub trait Distance {
     fn distance(&self, other: &Self) -> f32;
 }
 
-pub trait Zero {
-    fn zero() -> Self;
+pub trait DimComponent:
+    std::ops::Index<usize, Output = f32> + std::ops::IndexMut<usize, Output = f32>
+{
+    const NUM_DIMENSIONS: usize;
 }
 
-pub trait MaxVarianceDirection: Sized {
-    fn mean_along_direction(elements: &[&Self], direction_index: usize) -> f32;
-    fn variance_along_direction(elements: &[&Self], direction_index: usize) -> f32;
-    fn direction_of_max_variance(elements: &[&Self]) -> usize;
-    fn centroid(elements: &[&Self]) -> Self;
-    fn dim_component(&self, i: usize) -> f32;
-}
-
-impl<const K: usize> MaxVarianceDirection for [f32; K] {
-    fn dim_component(&self, i: usize) -> f32 {
-        self[i]
-    }
-
-    fn mean_along_direction(elements: &[&[f32; K]], direction_index: usize) -> f32 {
-        assert!(!elements.is_empty());
-        let count = elements.len() as f32;
-        let sum = elements
-            .iter()
-            .map(|point| point[direction_index])
-            .sum::<f32>();
-        sum / count
-    }
-
-    fn variance_along_direction(elements: &[&[f32; K]], direction_index: usize) -> f32 {
-        assert!(!elements.is_empty());
-        let mean = Self::mean_along_direction(elements, direction_index);
-        let count = elements.len() as f32;
-        elements
-            .iter()
-            .map(|point| {
-                let diff = mean - point[direction_index];
-
-                diff * diff
-            })
-            .sum::<f32>()
-            / count
-    }
-
-    fn direction_of_max_variance(elements: &[&[f32; K]]) -> usize {
-        let mut max_variance = 0.0;
-        let mut direction_index = 0;
-        for i in 0..K {
-            let variance = Self::variance_along_direction(elements, i);
-            if variance > max_variance {
-                max_variance = variance;
-                direction_index = i;
-            }
-        }
-        direction_index
-    }
-
-    fn centroid(elements: &[&[f32; K]]) -> Self {
-        let mut centroid = [0f32; K];
-        for (i, c) in centroid.iter_mut().enumerate().take(K) {
-            *c = Self::mean_along_direction(elements, i);
-        }
-        centroid
-    }
+pub trait GetCenter<K> {
+    fn get_center(&self) -> &K;
 }
 
 #[derive(Debug)]
@@ -73,6 +19,12 @@ pub struct Element<P, K> {
     pub center: K,
     pub radius: f32,
     pub payload: P,
+}
+
+impl<P, K> GetCenter<K> for Element<P, K> {
+    fn get_center(&self) -> &K {
+        &self.center
+    }
 }
 
 impl<P, K: PartialEq> PartialEq for Element<P, K> {
@@ -95,16 +47,22 @@ impl<P, K: Distance> Element<P, K> {
 }
 
 #[derive(Debug)]
-pub enum SsNodeLinks<P, K: Distance + MaxVarianceDirection + PartialEq, const M: usize> {
+pub enum SsNodeLinks<P, K: Distance + DimComponent + PartialEq, const M: usize> {
     Inner(Box<ArrayVec<SsNode<P, K, M>, M>>),
     Leaf(Box<ArrayVec<Element<P, K>, M>>),
 }
 
 #[derive(Debug)]
-pub struct SsNode<P, K: Distance + MaxVarianceDirection + PartialEq, const M: usize> {
+pub struct SsNode<P, K: Distance + DimComponent + PartialEq, const M: usize> {
     pub centroid: K,
     pub radius: f32,
     pub links: SsNodeLinks<P, K, M>,
+}
+
+impl<P, K: Distance + DimComponent + PartialEq, const M: usize> GetCenter<K> for SsNode<P, K, M> {
+    fn get_center(&self) -> &K {
+        &self.centroid
+    }
 }
 
 impl<const K: usize> Distance for [f32; K] {
@@ -116,10 +74,9 @@ impl<const K: usize> Distance for [f32; K] {
             .sqrt()
     }
 }
-impl<const K: usize> Zero for [f32; K] {
-    fn zero() -> Self {
-        [0f32; K]
-    }
+
+impl<const K: usize> DimComponent for [f32; K] {
+    const NUM_DIMENSIONS: usize = K;
 }
 
 #[test]
@@ -129,7 +86,7 @@ fn test_distance() {
     assert_eq!([1000.0, -1000.0].distance(&[1000.0, 2000.0]), 3000.0);
 }
 
-impl<P, K: Zero + MaxVarianceDirection + Distance + PartialEq, const M: usize> SsNode<P, K, M> {
+impl<P, K: Default + DimComponent + Distance + PartialEq, const M: usize> SsNode<P, K, M> {
     pub fn from_elements(elements: ArrayVec<Element<P, K>, M>) -> Self {
         let (centroid, radius) = leaf::centroid_and_radius::<P, K, M>(&elements);
         Self {
@@ -376,16 +333,10 @@ impl<P, K: Zero + MaxVarianceDirection + Distance + PartialEq, const M: usize> S
     //   return points
 }
 
-fn find_closest_child<'a, P, K: Distance + MaxVarianceDirection + PartialEq, const M: usize>(
+fn find_closest_child<'a, P, K: Distance + DimComponent + PartialEq, const M: usize>(
     children: &'a [SsNode<P, K, M>],
     target: &K,
 ) -> &'a SsNode<P, K, M> {
-    // children
-    //     .iter()
-    //     .min_by_key(|a| distance(&a.centroid, target))
-    //     .as_ref()
-    //     .unwrap()
-
     let mut min_dist = f32::MAX;
     let mut cur_min = None;
     for child in children {
@@ -397,7 +348,7 @@ fn find_closest_child<'a, P, K: Distance + MaxVarianceDirection + PartialEq, con
     }
     cur_min.unwrap()
 }
-fn find_closest_child_index<P, K: Distance + MaxVarianceDirection + PartialEq, const M: usize>(
+fn find_closest_child_index<P, K: Distance + DimComponent + PartialEq, const M: usize>(
     children: &[SsNode<P, K, M>],
     target: &K,
 ) -> usize {
@@ -414,17 +365,17 @@ fn find_closest_child_index<P, K: Distance + MaxVarianceDirection + PartialEq, c
 }
 
 #[derive(Debug)]
-pub struct SsTree<P, K: Distance + MaxVarianceDirection + PartialEq, const M: usize> {
+pub struct SsTree<P, K: Distance + DimComponent + PartialEq, const M: usize> {
     pub root: SsNode<P, K, M>,
     height: usize,
     m: usize,
 }
 
-impl<P, K: Zero + Distance + MaxVarianceDirection + PartialEq, const M: usize> SsTree<P, K, M> {
+impl<P, K: Default + Distance + DimComponent + PartialEq, const M: usize> SsTree<P, K, M> {
     pub fn new(m: usize) -> Self {
         Self {
             root: SsNode {
-                centroid: K::zero(),
+                centroid: K::default(),
                 radius: 0f32,
                 links: SsNodeLinks::Leaf(Box::new(ArrayVec::new())),
             },
@@ -481,7 +432,7 @@ impl<P, K: Zero + Distance + MaxVarianceDirection + PartialEq, const M: usize> S
     }
 }
 
-impl<P, K: Distance + MaxVarianceDirection + Zero + PartialEq, const M: usize> Default
+impl<P, K: Distance + DimComponent + Default + PartialEq, const M: usize> Default
     for SsTree<P, K, M>
 {
     fn default() -> Self {
@@ -489,75 +440,82 @@ impl<P, K: Distance + MaxVarianceDirection + Zero + PartialEq, const M: usize> D
     }
 }
 
+mod util {
+    use super::{DimComponent, GetCenter};
+    fn mean_along_direction<K: DimComponent, E: GetCenter<K>>(
+        elements: &[E],
+        direction_index: usize,
+    ) -> f32 {
+        assert!(!elements.is_empty());
+        let count = elements.len() as f32;
+        let sum = elements
+            .iter()
+            .map(|point| point.get_center()[direction_index])
+            .sum::<f32>();
+        sum / count
+    }
+
+    pub fn variance_along_direction<K: DimComponent, E: GetCenter<K>>(
+        elements: &[E],
+        direction_index: usize,
+    ) -> f32 {
+        assert!(!elements.is_empty());
+        let mean = mean_along_direction(elements, direction_index);
+        let count = elements.len() as f32;
+        elements
+            .iter()
+            .map(|point| {
+                let diff = mean - point.get_center()[direction_index];
+                diff * diff
+            })
+            .sum::<f32>()
+            / count
+    }
+
+    pub fn direction_of_max_variance<K: DimComponent, E: GetCenter<K>>(elements: &[E]) -> usize {
+        let mut max_variance = 0.0;
+        let mut direction_index = 0;
+        for i in 0..K::NUM_DIMENSIONS {
+            let variance = variance_along_direction(elements, i);
+            if variance > max_variance {
+                max_variance = variance;
+                direction_index = i;
+            }
+        }
+        direction_index
+    }
+
+    pub fn centroid<K: DimComponent + Default, E: GetCenter<K>>(elements: &[E]) -> K {
+        let mut centroid = K::default();
+        for i in 0..K::NUM_DIMENSIONS {
+            centroid[i] = mean_along_direction(elements, i);
+        }
+        centroid
+    }
+}
+
 mod leaf {
-    use arrayvec::ArrayVec;
+    use super::{
+        util::{centroid, direction_of_max_variance, variance_along_direction},
+        DimComponent, Distance, Element,
+    };
 
-    use super::{Distance, Element, MaxVarianceDirection, Zero};
-    // pub fn mean_along_direction<P, K>(elements: &[Element<P, K>], direction_index: usize) -> f32 {
-    //     assert!(!elements.is_empty());
-    //     let count = elements.len() as f32;
-    //     let sum = elements
-    //         .iter()
-    //         .map(|point| point.center[direction_index])
-    //         .sum::<f32>();
-    //     sum / count
-    // }
-
-    // pub fn variance_along_direction<P, K>(
-    //     elements: &[Element<P, K>],
-    //     direction_index: usize,
-    // ) -> f32 {
-    //     assert!(!elements.is_empty());
-    //     let mean = mean_along_direction(elements, direction_index);
-    //     let count = elements.len() as f32;
-    //     elements
-    //         .iter()
-    //         .map(|point| {
-    //             let diff = mean - point.center[direction_index];
-
-    //             diff * diff
-    //         })
-    //         .sum::<f32>()
-    //         / count
-    // }
-
-    // pub fn direction_of_max_variance<P, K>(elements: &[Element<P, K>]) -> usize {
-    //     let mut max_variance = 0.0;
-    //     let mut direction_index = 0;
-    //     for i in 0..K {
-    //         let variance = variance_along_direction(elements, i);
-    //         if variance > max_variance {
-    //             max_variance = variance;
-    //             direction_index = i;
-    //         }
-    //     }
-    //     direction_index
-    // }
-
-    pub fn find_split_index<P, K: MaxVarianceDirection + Distance, const M: usize>(
+    pub fn find_split_index<P, K: DimComponent + Distance, const M: usize>(
         elements: &mut [Element<P, K>],
         m: usize,
     ) -> usize {
-        let coordinate_index = {
-            // FIXME: use ArrayVec one generic const exprs are stable
-            let keys = elements.iter().map(|e| &e.center).collect::<Vec<_>>();
-
-            K::direction_of_max_variance(&keys)
-        };
+        let coordinate_index = direction_of_max_variance(elements);
         elements.sort_by(|p1, p2| {
-            p1.center
-                .dim_component(coordinate_index)
-                .partial_cmp(&p2.center.dim_component(coordinate_index))
+            p1.center[coordinate_index]
+                .partial_cmp(&p2.center[coordinate_index])
                 .unwrap()
         });
 
-        // FIXME: use ArrayVec one generic const exprs are stable
-        let keys = elements.iter().map(|e| &e.center).collect::<Vec<_>>();
         let mut min_variance = f32::INFINITY;
         let mut split_index = m;
         for i in m..=(elements.len() - m) {
-            let variance1 = K::variance_along_direction(&keys[..i], coordinate_index);
-            let variance2 = K::variance_along_direction(&keys[i..], coordinate_index);
+            let variance1 = variance_along_direction(&elements[..i], coordinate_index);
+            let variance2 = variance_along_direction(&elements[i..], coordinate_index);
             let variance = variance1 + variance2;
             if variance < min_variance {
                 min_variance = variance;
@@ -567,17 +525,10 @@ mod leaf {
         split_index
     }
 
-    pub fn centroid_and_radius<P, K: Zero + MaxVarianceDirection + Distance, const M: usize>(
+    pub fn centroid_and_radius<P, K: Default + DimComponent + Distance, const M: usize>(
         elements: &[Element<P, K>],
     ) -> (K, f32) {
-        let keys = elements
-            .iter()
-            .map(|e| &e.center)
-            .collect::<ArrayVec<_, M>>();
-
-        let centroid = K::centroid(&keys);
-
-        // let centroid = mean_along_all_directions(nodes);
+        let centroid = centroid(elements);
 
         let radius = elements
             .iter()
@@ -590,124 +541,19 @@ mod leaf {
 mod inner {
     use arrayvec::ArrayVec;
 
-    use super::{Distance, MaxVarianceDirection, SsNode, SsNodeLinks, Zero};
+    use super::{
+        util::{centroid, direction_of_max_variance, variance_along_direction},
+        DimComponent, Distance, SsNode, SsNodeLinks,
+    };
 
-    // pub fn find_split_index<P, const K: usize, const M: usize>(
-    //     nodes: &mut [SsNode<P, K, M>],
-    //     m: usize,
-    // ) -> usize {
-    //     let coordinate_index = direction_of_max_variance(nodes);
-    //     nodes.sort_by(|p1, p2| {
-    //         p1.centroid[coordinate_index]
-    //             .partial_cmp(&p2.centroid[coordinate_index])
-    //             .unwrap()
-    //     });
-    //     let mut min_variance = f32::INFINITY;
-    //     let mut split_index = m;
-    //     for i in m..=(nodes.len() - m) {
-    //         let variance1 = variance_along_direction(&nodes[..i], coordinate_index);
-    //         let variance2 = variance_along_direction(&nodes[i..], coordinate_index);
-    //         let variance = variance1 + variance2;
-    //         if variance < min_variance {
-    //             min_variance = variance;
-    //             split_index = i;
-    //         }
-    //     }
-    //     split_index
-    // }
-
-    // pub fn centroid_and_radius<P, const K: usize, const M: usize>(
-    //     nodes: &[SsNode<P, K, M>],
-    // ) -> ([f32; K], f32) {
-    //     let mut centroid = [0f32; K];
-    //     for (i, c) in centroid.iter_mut().enumerate().take(K) {
-    //         *c = mean_along_direction(nodes, i);
-    //     }
-
-    //     // let centroid = mean_along_all_directions(nodes);
-
-    //     let radius = nodes
-    //         .iter()
-    //         .map(|node| distance(&centroid, &node.centroid) + node.radius)
-    //         .max_by(|d1, d2| d1.partial_cmp(d2).unwrap())
-    //         .unwrap();
-    //     (centroid, radius)
-    // }
-
-    // pub fn mean_along_direction<P, const K: usize, const M: usize>(
-    //     points: &[SsNode<P, K, M>],
-    //     direction_index: usize,
-    // ) -> f32 {
-    //     assert!(!points.is_empty());
-    //     let count = points.len() as f32;
-    //     let sum = points
-    //         .iter()
-    //         .map(|point| point.centroid[direction_index])
-    //         .sum::<f32>();
-    //     sum / count
-    // }
-
-    // // pub fn mean_along_all_directions<const K: usize, const M: usize>(
-    // //     points: &[Box<SsNode<K, M>>],
-    // // ) -> [f32; K] {
-    // //     assert!(!points.is_empty());
-    // //     let count = points.len() as f32;
-    // //     let mut sum = points.iter().fold([0f32; K], |a, node| {
-    // //         let mut a = a.clone();
-    // //         a.iter_mut()
-    // //             .zip(node.centroid.iter())
-    // //             .for_each(|(a, c)| *a += *c);
-    // //         a
-    // //     });
-    // //     sum.iter_mut().for_each(|sum| *sum /= count);
-    // //     sum
-    // // }
-
-    // pub fn variance_along_direction<P, const K: usize, const M: usize>(
-    //     points: &[SsNode<P, K, M>],
-    //     direction_index: usize,
-    // ) -> f32 {
-    //     assert!(!points.is_empty());
-    //     let mean = mean_along_direction(points, direction_index);
-    //     let count = points.len() as f32;
-    //     points
-    //         .iter()
-    //         .map(|point| {
-    //             let diff = mean - point.centroid[direction_index];
-
-    //             diff * diff
-    //         })
-    //         .sum::<f32>()
-    //         / count
-    // }
-
-    // pub fn direction_of_max_variance<P, const K: usize, const M: usize>(
-    //     nodes: &[SsNode<P, K, M>],
-    // ) -> usize {
-    //     let mut max_variance = 0.0;
-    //     let mut direction_index = 0;
-    //     for i in 0..K {
-    //         let variance = variance_along_direction(nodes, i);
-    //         if variance > max_variance {
-    //             max_variance = variance;
-    //             direction_index = i;
-    //         }
-    //     }
-    //     direction_index
-    // }
     pub fn centroid_and_radius<
         P,
-        K: MaxVarianceDirection + Distance + PartialEq,
+        K: DimComponent + Distance + PartialEq + Default,
         const M: usize,
     >(
         nodes: &[SsNode<P, K, M>],
     ) -> (K, f32) {
-        let keys = nodes
-            .iter()
-            .map(|n| &n.centroid)
-            .collect::<ArrayVec<_, M>>();
-
-        let centroid = K::centroid(&keys);
+        let centroid = centroid(nodes);
         let radius = nodes
             .iter()
             .map(|node| centroid.distance(&node.centroid) + node.radius)
@@ -716,29 +562,22 @@ mod inner {
         (centroid, radius)
     }
 
-    pub fn find_split_index<P, K: Distance + MaxVarianceDirection + PartialEq, const M: usize>(
+    pub fn find_split_index<P, K: Distance + DimComponent + PartialEq, const M: usize>(
         nodes: &mut [SsNode<P, K, M>],
         m: usize,
     ) -> usize {
-        // FIXME: use ArrayVec when generco const exprs are stable
-        let coordinate_index = {
-            let keys = nodes.iter().map(|n| &n.centroid).collect::<Vec<_>>();
-
-            K::direction_of_max_variance(&keys)
-        };
+        let coordinate_index = direction_of_max_variance(nodes);
         nodes.sort_by(|p1, p2| {
-            p1.centroid
-                .dim_component(coordinate_index)
-                .partial_cmp(&p2.centroid.dim_component(coordinate_index))
+            p1.centroid[coordinate_index]
+                .partial_cmp(&p2.centroid[coordinate_index])
                 .unwrap()
         });
-        let keys = nodes.iter().map(|n| &n.centroid).collect::<Vec<_>>();
 
         let mut min_variance = f32::INFINITY;
         let mut split_index = m;
         for i in m..=(nodes.len() - m) {
-            let variance1 = K::variance_along_direction(&keys[..i], coordinate_index);
-            let variance2 = K::variance_along_direction(&keys[i..], coordinate_index);
+            let variance1 = variance_along_direction(&nodes[..i], coordinate_index);
+            let variance2 = variance_along_direction(&nodes[i..], coordinate_index);
             let variance = variance1 + variance2;
             if variance < min_variance {
                 min_variance = variance;
@@ -750,7 +589,7 @@ mod inner {
 
     pub fn find_sibling_to_borrow_from<
         P,
-        K: Distance + MaxVarianceDirection + PartialEq,
+        K: Distance + DimComponent + PartialEq,
         const M: usize,
     >(
         nodes: &[SsNode<P, K, M>],
@@ -781,7 +620,7 @@ mod inner {
 
     pub fn borrow_from_sibling<
         P,
-        K: Distance + Zero + MaxVarianceDirection + PartialEq,
+        K: Distance + Default + DimComponent + PartialEq,
         const M: usize,
     >(
         nodes: &mut [SsNode<P, K, M>],
@@ -837,11 +676,7 @@ mod inner {
         }
     }
 
-    pub fn find_sibling_to_merge_to<
-        P,
-        K: Distance + MaxVarianceDirection + PartialEq,
-        const M: usize,
-    >(
+    pub fn find_sibling_to_merge_to<P, K: Distance + DimComponent + PartialEq, const M: usize>(
         nodes: &[SsNode<P, K, M>],
         node_to_fix: usize,
         m: usize,
@@ -868,11 +703,7 @@ mod inner {
         closest_sibling
     }
 
-    pub fn merge_siblings<
-        P,
-        K: Zero + Distance + MaxVarianceDirection + PartialEq,
-        const M: usize,
-    >(
+    pub fn merge_siblings<P, K: Default + Distance + DimComponent + PartialEq, const M: usize>(
         nodes: &mut ArrayVec<SsNode<P, K, M>, M>,
         mut node_index_1: usize,
         mut node_index_2: usize,
@@ -887,7 +718,7 @@ mod inner {
         nodes.push(node);
     }
 
-    fn merge<P, K: Zero + Distance + MaxVarianceDirection + PartialEq, const M: usize>(
+    fn merge<P, K: Default + Distance + DimComponent + PartialEq, const M: usize>(
         node_1: SsNode<P, K, M>,
         node_2: SsNode<P, K, M>,
     ) -> SsNode<P, K, M> {
