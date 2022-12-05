@@ -280,13 +280,8 @@ impl<P, K: Default + DimComponent + Distance + PartialEq, const M: usize> SsNode
                             // no sibling to borrow from -> merge
                             inner::merge_siblings(nodes, node_to_fix, sibling_to_merge_to);
                         }
-                        //  else {
-                        //     panic!("cannot borrow / merge");
-                        // }
                         let num_nodes = nodes.len();
                         if num_nodes != 0 {
-                            // (self.centroid, self.radius) =
-                            //     leaf::centroid_and_radius::<P, K, M>(nodes)
                             self.update_bounding_envelope();
                         }
 
@@ -411,17 +406,12 @@ impl<P, K: Default + Distance + DimComponent + PartialEq, const M: usize> SsTree
     pub fn delete(&mut self, point: &K) {
         let (_deleted, _violiates_invariant) = self.root.delete(point, self.m);
 
-        // if violiates_invariant {
-        // println!("violate invariant at root!");
         match &mut self.root.links {
-            // SsNodeLinks::Leaf(leafs) => (), //println!("leafs: {}", leafs.len()),
             SsNodeLinks::Inner(nodes) if nodes.len() == 1 => {
-                // println!("nodes: {}", nodes.len());
                 self.root = nodes.pop().unwrap();
             }
             _ => (),
         }
-        // }
     }
 
     pub fn get_height(&self) -> usize {

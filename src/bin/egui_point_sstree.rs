@@ -242,12 +242,12 @@ fn main() {
     let mut tree = SsTree::new(LOWER_M);
     let mut rng = rand::thread_rng();
 
-    for _ in 0..5 {
-        println!("insert...");
-        for _ in 0..1000000 {
-            tree.insert(&[rng.gen_range(200.0..600.0), rng.gen_range(200.0..600.0)]);
-        }
-    }
+    // for _ in 0..5 {
+    //     println!("insert...");
+    //     for _ in 0..1000000 {
+    //         tree.insert(&[rng.gen_range(200.0..600.0), rng.gen_range(200.0..600.0)]);
+    //     }
+    // }
     let app = MyEguiApp {
         stroke: Stroke::new(1.0, Color32::LIGHT_BLUE),
         shapes: Vec::new(),
