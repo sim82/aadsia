@@ -235,9 +235,11 @@ impl<P, K: Default + DimComponent + Distance + PartialEq, const M: usize> SsNode
                     .find(|(_, p)| p.intersects_point(target))
                 {
                     elements.remove(i);
-                    let num_elemens = elements.len();
-                    self.update_bounding_envelope();
-                    (true, num_elemens < m)
+                    let num_elements = elements.len();
+                    if num_elements != 0 {
+                        self.update_bounding_envelope();
+                    }
+                    (true, num_elements < m)
                 } else {
                     (false, false)
                 }
@@ -281,7 +283,14 @@ impl<P, K: Default + DimComponent + Distance + PartialEq, const M: usize> SsNode
                         //  else {
                         //     panic!("cannot borrow / merge");
                         // }
-                        (true, nodes.len() < m)
+                        let num_nodes = nodes.len();
+                        if num_nodes != 0 {
+                            // (self.centroid, self.radius) =
+                            //     leaf::centroid_and_radius::<P, K, M>(nodes)
+                            self.update_bounding_envelope();
+                        }
+
+                        (true, num_nodes < m)
                     }
                 }
             }
