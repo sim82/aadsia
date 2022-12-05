@@ -4,14 +4,10 @@ pub trait Distance {
     fn distance(&self, other: &Self) -> f32;
 }
 
-pub trait DimComponent:
+pub trait Dimindex:
     std::ops::Index<usize, Output = f32> + std::ops::IndexMut<usize, Output = f32>
 {
     const NUM_DIMENSIONS: usize;
-}
-
-pub trait GetCenter<K> {
-    fn get_center(&self) -> &K;
 }
 
 #[derive(Debug)]
@@ -19,12 +15,6 @@ pub struct Element<P, K> {
     pub center: K,
     pub radius: f32,
     pub payload: P,
-}
-
-impl<P, K> GetCenter<K> for Element<P, K> {
-    fn get_center(&self) -> &K {
-        &self.center
-    }
 }
 
 impl<P, K: PartialEq> PartialEq for Element<P, K> {
@@ -47,22 +37,16 @@ impl<P, K: Distance> Element<P, K> {
 }
 
 #[derive(Debug)]
-pub enum SsNodeLinks<P, K: Distance + DimComponent + PartialEq, const M: usize> {
+pub enum SsNodeLinks<P, K: Distance + Dimindex + PartialEq, const M: usize> {
     Inner(Box<ArrayVec<SsNode<P, K, M>, M>>),
     Leaf(Box<ArrayVec<Element<P, K>, M>>),
 }
 
 #[derive(Debug)]
-pub struct SsNode<P, K: Distance + DimComponent + PartialEq, const M: usize> {
+pub struct SsNode<P, K: Distance + Dimindex + PartialEq, const M: usize> {
     pub centroid: K,
     pub radius: f32,
     pub links: SsNodeLinks<P, K, M>,
-}
-
-impl<P, K: Distance + DimComponent + PartialEq, const M: usize> GetCenter<K> for SsNode<P, K, M> {
-    fn get_center(&self) -> &K {
-        &self.centroid
-    }
 }
 
 impl<const K: usize> Distance for [f32; K] {
@@ -75,7 +59,7 @@ impl<const K: usize> Distance for [f32; K] {
     }
 }
 
-impl<const K: usize> DimComponent for [f32; K] {
+impl<const K: usize> Dimindex for [f32; K] {
     const NUM_DIMENSIONS: usize = K;
 }
 
@@ -86,7 +70,7 @@ fn test_distance() {
     assert_eq!([1000.0, -1000.0].distance(&[1000.0, 2000.0]), 3000.0);
 }
 
-impl<P, K: Default + DimComponent + Distance + PartialEq, const M: usize> SsNode<P, K, M> {
+impl<P, K: Default + Dimindex + Distance + PartialEq, const M: usize> SsNode<P, K, M> {
     pub fn from_elements(elements: ArrayVec<Element<P, K>, M>) -> Self {
         let (centroid, radius) = leaf::centroid_and_radius::<P, K, M>(&elements);
         Self {
@@ -324,6 +308,50 @@ impl<P, K: Default + DimComponent + Distance + PartialEq, const M: usize> SsNode
             }
         }
     }
+
+    pub fn element_paths_within_radius<'a>(
+        &'a self,
+        center: &K,
+        radius: f32,
+        // out: &mut Vec<&'a Element<P, K>>,
+        path: &mut Vec<u8>,
+        out: &mut Vec<Vec<u8>>,
+    ) {
+        match &self.links {
+            SsNodeLinks::Leaf(points) => {
+                for (i, point) in points.iter().enumerate() {
+                    if point.center.distance(center) < (radius + point.radius) {
+                        let mut new_path = path.clone();
+                        new_path.push(i as u8);
+                        out.push(new_path);
+                        // out.push(point);
+                    }
+                }
+            }
+            SsNodeLinks::Inner(nodes) => {
+                for (i, child) in nodes.iter().enumerate() {
+                    if child.centroid.distance(center) <= radius + child.radius {
+                        path.push(i as u8);
+                        child.element_paths_within_radius(center, radius, path, out);
+                        path.pop();
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn get_element_by_path<'a>(&'a self, path: &[u8]) -> &'a Element<P, K> {
+        match &self.links {
+            SsNodeLinks::Leaf(points) => {
+                assert!(path.len() == 1);
+                &points[path[0] as usize]
+            }
+            SsNodeLinks::Inner(nodes) => {
+                let (a, rest) = path.split_at(1);
+                nodes[a[0] as usize].get_element_by_path(rest)
+            }
+        }
+    }
     // function pointsWithinRegion(node, region)
     //   points ← []
     //   if node.leaf then
@@ -337,7 +365,7 @@ impl<P, K: Default + DimComponent + Distance + PartialEq, const M: usize> SsNode
     //   return points
 }
 
-fn find_closest_child<'a, P, K: Distance + DimComponent + PartialEq, const M: usize>(
+fn find_closest_child<'a, P, K: Distance + Dimindex + PartialEq, const M: usize>(
     children: &'a [SsNode<P, K, M>],
     target: &K,
 ) -> &'a SsNode<P, K, M> {
@@ -352,7 +380,7 @@ fn find_closest_child<'a, P, K: Distance + DimComponent + PartialEq, const M: us
     }
     cur_min.unwrap()
 }
-fn find_closest_child_index<P, K: Distance + DimComponent + PartialEq, const M: usize>(
+fn find_closest_child_index<P, K: Distance + Dimindex + PartialEq, const M: usize>(
     children: &[SsNode<P, K, M>],
     target: &K,
 ) -> usize {
@@ -369,13 +397,13 @@ fn find_closest_child_index<P, K: Distance + DimComponent + PartialEq, const M: 
 }
 
 #[derive(Debug)]
-pub struct SsTree<P, K: Distance + DimComponent + PartialEq, const M: usize> {
+pub struct SsTree<P, K: Distance + Dimindex + PartialEq, const M: usize> {
     pub root: SsNode<P, K, M>,
     height: usize,
     m: usize,
 }
 
-impl<P, K: Default + Distance + DimComponent + PartialEq, const M: usize> SsTree<P, K, M> {
+impl<P, K: Default + Distance + Dimindex + PartialEq, const M: usize> SsTree<P, K, M> {
     pub fn new(m: usize) -> Self {
         Self {
             root: SsNode {
@@ -430,19 +458,45 @@ impl<P, K: Default + Distance + DimComponent + PartialEq, const M: usize> SsTree
     ) {
         self.root.elements_within_radius(center, radius, out);
     }
+
+    pub fn paths_within_radius<'a>(&'a self, center: &K, radius: f32, out: &mut Vec<Vec<u8>>) {
+        out.clear();
+        let mut tmp_path = Vec::new();
+        self.root
+            .element_paths_within_radius(center, radius, &mut tmp_path, out);
+    }
+
+    pub fn get_by_path<'a>(&'a self, path: &[u8]) -> &'a Element<P, K> {
+        self.root.get_element_by_path(path)
+    }
 }
 
-impl<P, K: Distance + DimComponent + Default + PartialEq, const M: usize> Default
-    for SsTree<P, K, M>
-{
+impl<P, K: Distance + Dimindex + Default + PartialEq, const M: usize> Default for SsTree<P, K, M> {
     fn default() -> Self {
         Self::new(M / 2)
     }
 }
 
 mod util {
-    use super::{DimComponent, GetCenter};
-    fn mean_along_direction<K: DimComponent, E: GetCenter<K>>(
+    use super::{Dimindex, Distance, Element, SsNode};
+
+    pub trait GetCenter<K> {
+        fn get_center(&self) -> &K;
+    }
+
+    impl<P, K> GetCenter<K> for Element<P, K> {
+        fn get_center(&self) -> &K {
+            &self.center
+        }
+    }
+
+    impl<P, K: Distance + Dimindex + PartialEq, const M: usize> GetCenter<K> for SsNode<P, K, M> {
+        fn get_center(&self) -> &K {
+            &self.centroid
+        }
+    }
+
+    pub fn mean_along_direction<K: Dimindex, E: GetCenter<K>>(
         elements: &[E],
         direction_index: usize,
     ) -> f32 {
@@ -455,7 +509,7 @@ mod util {
         sum / count
     }
 
-    pub fn variance_along_direction<K: DimComponent, E: GetCenter<K>>(
+    pub fn variance_along_direction<K: Dimindex, E: GetCenter<K>>(
         elements: &[E],
         direction_index: usize,
     ) -> f32 {
@@ -472,7 +526,7 @@ mod util {
             / count
     }
 
-    pub fn direction_of_max_variance<K: DimComponent, E: GetCenter<K>>(elements: &[E]) -> usize {
+    pub fn direction_of_max_variance<K: Dimindex, E: GetCenter<K>>(elements: &[E]) -> usize {
         let mut max_variance = 0.0;
         let mut direction_index = 0;
         for i in 0..K::NUM_DIMENSIONS {
@@ -485,7 +539,7 @@ mod util {
         direction_index
     }
 
-    pub fn centroid<K: DimComponent + Default, E: GetCenter<K>>(elements: &[E]) -> K {
+    pub fn centroid<K: Dimindex + Default, E: GetCenter<K>>(elements: &[E]) -> K {
         let mut centroid = K::default();
         for i in 0..K::NUM_DIMENSIONS {
             centroid[i] = mean_along_direction(elements, i);
@@ -497,10 +551,10 @@ mod util {
 mod leaf {
     use super::{
         util::{centroid, direction_of_max_variance, variance_along_direction},
-        DimComponent, Distance, Element,
+        Dimindex, Distance, Element,
     };
 
-    pub fn find_split_index<P, K: DimComponent + Distance, const M: usize>(
+    pub fn find_split_index<P, K: Dimindex + Distance, const M: usize>(
         elements: &mut [Element<P, K>],
         m: usize,
     ) -> usize {
@@ -525,7 +579,7 @@ mod leaf {
         split_index
     }
 
-    pub fn centroid_and_radius<P, K: Default + DimComponent + Distance, const M: usize>(
+    pub fn centroid_and_radius<P, K: Default + Dimindex + Distance, const M: usize>(
         elements: &[Element<P, K>],
     ) -> (K, f32) {
         let centroid = centroid(elements);
@@ -543,14 +597,10 @@ mod inner {
 
     use super::{
         util::{centroid, direction_of_max_variance, variance_along_direction},
-        DimComponent, Distance, SsNode, SsNodeLinks,
+        Dimindex, Distance, SsNode, SsNodeLinks,
     };
 
-    pub fn centroid_and_radius<
-        P,
-        K: DimComponent + Distance + PartialEq + Default,
-        const M: usize,
-    >(
+    pub fn centroid_and_radius<P, K: Dimindex + Distance + PartialEq + Default, const M: usize>(
         nodes: &[SsNode<P, K, M>],
     ) -> (K, f32) {
         let centroid = centroid(nodes);
@@ -562,7 +612,7 @@ mod inner {
         (centroid, radius)
     }
 
-    pub fn find_split_index<P, K: Distance + DimComponent + PartialEq, const M: usize>(
+    pub fn find_split_index<P, K: Distance + Dimindex + PartialEq, const M: usize>(
         nodes: &mut [SsNode<P, K, M>],
         m: usize,
     ) -> usize {
@@ -587,11 +637,7 @@ mod inner {
         split_index
     }
 
-    pub fn find_sibling_to_borrow_from<
-        P,
-        K: Distance + DimComponent + PartialEq,
-        const M: usize,
-    >(
+    pub fn find_sibling_to_borrow_from<P, K: Distance + Dimindex + PartialEq, const M: usize>(
         nodes: &[SsNode<P, K, M>],
         node_to_fix: usize,
         m: usize,
@@ -618,11 +664,7 @@ mod inner {
         closest_sibling
     }
 
-    pub fn borrow_from_sibling<
-        P,
-        K: Distance + Default + DimComponent + PartialEq,
-        const M: usize,
-    >(
+    pub fn borrow_from_sibling<P, K: Distance + Default + Dimindex + PartialEq, const M: usize>(
         nodes: &mut [SsNode<P, K, M>],
         node_to_fix: usize,
 
@@ -676,7 +718,7 @@ mod inner {
         }
     }
 
-    pub fn find_sibling_to_merge_to<P, K: Distance + DimComponent + PartialEq, const M: usize>(
+    pub fn find_sibling_to_merge_to<P, K: Distance + Dimindex + PartialEq, const M: usize>(
         nodes: &[SsNode<P, K, M>],
         node_to_fix: usize,
         m: usize,
@@ -703,7 +745,7 @@ mod inner {
         closest_sibling
     }
 
-    pub fn merge_siblings<P, K: Default + Distance + DimComponent + PartialEq, const M: usize>(
+    pub fn merge_siblings<P, K: Default + Distance + Dimindex + PartialEq, const M: usize>(
         nodes: &mut ArrayVec<SsNode<P, K, M>, M>,
         mut node_index_1: usize,
         mut node_index_2: usize,
@@ -718,7 +760,7 @@ mod inner {
         nodes.push(node);
     }
 
-    fn merge<P, K: Default + Distance + DimComponent + PartialEq, const M: usize>(
+    fn merge<P, K: Default + Distance + Dimindex + PartialEq, const M: usize>(
         node_1: SsNode<P, K, M>,
         node_2: SsNode<P, K, M>,
     ) -> SsNode<P, K, M> {

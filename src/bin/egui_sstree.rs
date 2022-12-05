@@ -103,7 +103,9 @@ impl MyEguiApp {
         } else if self.delete {
             if response.dragged() {
                 let start = Instant::now();
+
                 let mut selected = Vec::new();
+
                 self.tree.points_within_radius(
                     &pos2_to_array(&response.interact_pointer_pos().unwrap()),
                     self.delete_radius,
@@ -169,11 +171,24 @@ impl MyEguiApp {
             let mut selected = Vec::new();
 
             let start = Instant::now();
-            self.tree.points_within_radius(
-                &[select_tool.center.x, select_tool.center.y],
-                select_tool.radius,
-                &mut selected,
-            );
+            if !false {
+                self.tree.points_within_radius(
+                    &[select_tool.center.x, select_tool.center.y],
+                    select_tool.radius,
+                    &mut selected,
+                );
+            } else {
+                let mut paths = Vec::new();
+                self.tree.paths_within_radius(
+                    &[select_tool.center.x, select_tool.center.y],
+                    select_tool.radius,
+                    &mut paths,
+                );
+
+                for path in paths {
+                    selected.push(self.tree.get_by_path(&path))
+                }
+            }
             println!("selected: {} {:?}", selected.len(), start.elapsed());
 
             painter.extend(
@@ -259,12 +274,13 @@ fn main() {
     let mut tree = SsTree::new(LOWER_M);
     let mut rng = rand::thread_rng();
 
-    // for _ in 0..100000 {
-    //     tree.insert(Element::new(
-    //         &[rng.gen_range(200.0..600.0), rng.gen_range(200.0..600.0)],
-    //         2.0,
-    //     ));
-    // }
+    for i in 0..100000 {
+        tree.insert(Element::new(
+            [rng.gen_range(200.0..600.0), rng.gen_range(200.0..600.0)],
+            2.0,
+            i,
+        ));
+    }
 
     let app = MyEguiApp {
         shapes: Vec::new(),
