@@ -50,8 +50,8 @@ impl Drag {
     }
 }
 
-const M: usize = 8;
-const LOWER_M: usize = 4;
+const M: usize = 32;
+const LOWER_M: usize = 16;
 
 #[derive(Default, PartialEq)]
 enum Mode {
@@ -82,7 +82,7 @@ struct MyEguiApp {
 impl epi::App for MyEguiApp {
     fn update(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            let res = ui.add(egui::Slider::new(&mut self.max_depth, 0..=6));
+            let res = ui.add(egui::Slider::new(&mut self.max_depth, 0..=10));
             let res2 = ui.add(egui::Checkbox::new(&mut self.draw_points, "points"));
 
             ui.radio_value(&mut self.mode, Mode::Draw, "draw");
@@ -176,26 +176,27 @@ impl MyEguiApp {
                     println!("drag start {:?}", selected);
 
                     if let Some(path) = selected.pop() {
-                        // self.drag_tool = Some(Drag {
-                        //     path,
-                        //     last_pos: pos2,
-                        // });
-                        self.tree.remove_by_path(&path);
+                        self.drag_tool = Some(Drag {
+                            path,
+                            last_pos: pos2,
+                        });
+                        // self.tree.remove_by_path(&path);
                         changed = true;
                     }
                 } else if response.drag_released() {
                     self.drag_tool = None;
+                    changed = true;
                 } else if response.dragged() {
-                    // if let Some(drag_tool) = self.drag_tool.as_mut() {
-                    //     drag_tool.update(
-                    //         response
-                    //             .interact_pointer_pos()
-                    //             .expect("missing pointer pos in drag"),
-                    //         &mut self.tree,
-                    //     );
-                    // }
-                    // changed = true;
-                    // println!("drag update {:?}", self.drag_tool);
+                    if let Some(drag_tool) = self.drag_tool.as_mut() {
+                        drag_tool.update(
+                            response
+                                .interact_pointer_pos()
+                                .expect("missing pointer pos in drag"),
+                            &mut self.tree,
+                        );
+                    }
+                    changed = true;
+                    println!("drag update {:?}", self.drag_tool);
                 }
             }
             Mode::Draw => {
@@ -357,13 +358,13 @@ fn main() {
     let mut tree = SsTree::new(LOWER_M);
     let mut rng = rand::thread_rng();
 
-    // for i in 0..100 {
-    //     tree.insert(Element::new(
-    //         [rng.gen_range(200.0..600.0), rng.gen_range(200.0..600.0)],
-    //         2.0,
-    //         i,
-    //     ));
-    // }
+    for i in 0..1000000 {
+        tree.insert(Element::new(
+            [rng.gen_range(200.0..60000.0), rng.gen_range(200.0..60000.0)],
+            5.0,
+            i,
+        ));
+    }
 
     let app = MyEguiApp {
         shapes: Vec::new(),
