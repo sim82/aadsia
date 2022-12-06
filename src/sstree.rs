@@ -15,6 +15,7 @@ pub struct Element<P, K> {
     pub center: K,
     pub radius: f32,
     pub payload: P,
+    pub marker: bool,
 }
 
 impl<P, K: PartialEq> PartialEq for Element<P, K> {
@@ -29,6 +30,7 @@ impl<P, K: Distance> Element<P, K> {
             center,
             radius,
             payload,
+            marker: false,
         }
     }
     pub fn intersects_point(&self, target: &K) -> bool {
@@ -47,6 +49,7 @@ pub struct SsNode<P, K: Distance + Dimindex + PartialEq, const M: usize> {
     pub centroid: K,
     pub radius: f32,
     pub links: SsNodeLinks<P, K, M>,
+    pub marker: bool,
 }
 
 impl<const K: usize> Distance for [f32; K] {
@@ -77,6 +80,7 @@ impl<P, K: Default + Dimindex + Distance + PartialEq, const M: usize> SsNode<P, 
             centroid,
             radius,
             links: SsNodeLinks::Leaf(Box::new(elements)),
+            marker: false,
         }
     }
 
@@ -86,6 +90,7 @@ impl<P, K: Default + Dimindex + Distance + PartialEq, const M: usize> SsNode<P, 
             centroid,
             radius,
             links: SsNodeLinks::Inner(Box::new(nodes)),
+            marker: false,
         }
     }
 
@@ -126,7 +131,12 @@ impl<P, K: Default + Dimindex + Distance + PartialEq, const M: usize> SsNode<P, 
         self.centroid = centroid;
         self.radius = radius;
     }
-    pub fn insert(&mut self, element: Element<P, K>, m: usize) -> Option<(Self, Self)> {
+    pub fn insert(
+        &mut self,
+        mut element: Element<P, K>,
+        m: usize,
+        path: &mut Vec<u8>,
+    ) -> Option<(Self, Self, u8)> {
         match &mut self.links {
             SsNodeLinks::Leaf(points) => {
                 if points.iter().any(|p| *p == element) {
@@ -134,10 +144,15 @@ impl<P, K: Default + Dimindex + Distance + PartialEq, const M: usize> SsNode<P, 
                 }
 
                 if points.len() < M {
+                    path.push(points.len() as u8);
                     points.push(element);
                     self.update_bounding_envelope();
                     return None;
                 } else {
+                    for node in points.iter_mut() {
+                        node.marker = false;
+                    }
+                    element.marker = true;
                     let mut nodes_to_split = points
                         .drain(..)
                         .chain(std::iter::once(element))
@@ -150,29 +165,60 @@ impl<P, K: Default + Dimindex + Distance + PartialEq, const M: usize> SsNode<P, 
                     let points1: ArrayVec<_, M> = nodes_to_split.drain(..split_index).collect();
                     let (centroid1, radius1) = leaf::centroid_and_radius::<P, K, M>(&points1);
 
+                    // find out in which new child and at which index the element was inserted
+                    let (marker1, marker2, pos) = {
+                        if let Some((i, _)) = points1
+                            .iter()
+                            .enumerate()
+                            .find(|(_i, element)| element.marker)
+                        {
+                            (true, false, i as u8)
+                        } else if let Some((i, _)) = points2
+                            .iter()
+                            .enumerate()
+                            .find(|(_i, element)| element.marker)
+                        {
+                            (false, true, i as u8)
+                        } else {
+                            panic!("no marked element found after insert");
+                        }
+                    };
+
                     let new_node1 = Self {
                         centroid: centroid1,
                         radius: radius1,
                         links: SsNodeLinks::Leaf(Box::new(points1)),
+                        marker: marker1,
                     };
                     let new_node2 = Self {
                         centroid: centroid2,
                         radius: radius2,
                         links: SsNodeLinks::Leaf(Box::new(points2)),
+                        marker: marker2,
                     };
-                    return Some((new_node1, new_node2));
+
+                    return Some((new_node1, new_node2, pos));
                 }
             }
 
             SsNodeLinks::Inner(children) => {
                 // TODO: check if using element.centroid also works for non-point elements
                 let closest_child_index = find_closest_child_index(children, &element.center);
-                if let Some((new_child_1, new_child_2)) =
-                    children[closest_child_index].insert(element, m)
+                if let Some((new_child_1, new_child_2, pos)) =
+                    children[closest_child_index].insert(element, m, path)
                 {
                     children.remove(closest_child_index);
 
                     if children.len() < M - 1 {
+                        path.push(pos);
+                        if new_child_1.marker {
+                            path.push(children.len() as u8);
+                        } else if new_child_2.marker {
+                            path.push((children.len() + 1) as u8);
+                        } else {
+                            panic!("none of the new children is marked");
+                        }
+
                         children.push(new_child_1);
                         children.push(new_child_2);
                     } else {
@@ -190,19 +236,41 @@ impl<P, K: Default + Dimindex + Distance + PartialEq, const M: usize> SsNode<P, 
                         let points1: ArrayVec<_, M> = nodes_to_split.drain(..split_index).collect();
                         let (centroid1, radius1) = inner::centroid_and_radius(&points1);
 
+                        // find out in which new child and at which index the element was inserted
+                        let (marker1, marker2, pos) = {
+                            if let Some((i, _)) = points1
+                                .iter()
+                                .enumerate()
+                                .find(|(_i, element)| element.marker)
+                            {
+                                (true, false, i as u8)
+                            } else if let Some((i, _)) = points2
+                                .iter()
+                                .enumerate()
+                                .find(|(_i, element)| element.marker)
+                            {
+                                (false, true, i as u8)
+                            } else {
+                                panic!("no marked element found after insert");
+                            }
+                        };
+
                         let new_node1 = Self {
                             centroid: centroid1,
                             radius: radius1,
                             links: SsNodeLinks::Inner(Box::new(points1)),
+                            marker: marker1,
                         };
                         let new_node2 = Self {
                             centroid: centroid2,
                             radius: radius2,
                             links: SsNodeLinks::Inner(Box::new(points2)),
+                            marker: marker2,
                         };
-                        return Some((new_node1, new_node2));
+                        return Some((new_node1, new_node2, pos));
                     }
                 } else {
+                    path.push(closest_child_index as u8);
                     self.update_bounding_envelope();
                 }
             }
@@ -270,6 +338,62 @@ impl<P, K: Default + Dimindex + Distance + PartialEq, const M: usize> SsNode<P, 
                         }
 
                         (true, num_nodes < m)
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn delete_element_by_path(&mut self, path: &[u8], m: usize) -> (bool, bool, Element<P, K>) {
+        match &mut self.links {
+            SsNodeLinks::Leaf(elements) => {
+                let i = path[0] as usize;
+
+                let element = elements.remove(i);
+                let num_elements = elements.len();
+                if num_elements != 0 {
+                    self.update_bounding_envelope();
+                }
+                (true, num_elements < m, element)
+            }
+            SsNodeLinks::Inner(nodes) => {
+                let mut node_to_fix_index = None;
+                let mut deleted = false;
+
+                let i = path[0] as usize;
+                let child_node = &mut nodes[i];
+                let res = child_node.delete_element_by_path(&path[0..], m);
+                deleted = res.0;
+                let violates_invariants = res.1;
+                // println!("{:?} {:?}", deleted, violates_invariants);
+                if violates_invariants {
+                    node_to_fix_index = Some(i);
+                }
+                match node_to_fix_index {
+                    None => {
+                        if deleted {
+                            self.update_bounding_envelope();
+                        }
+                        (deleted, false, res.2)
+                    }
+
+                    Some(node_to_fix) => {
+                        if let Some(sibling_to_borrow_from) =
+                            inner::find_sibling_to_borrow_from(nodes, node_to_fix, m)
+                        {
+                            inner::borrow_from_sibling(nodes, node_to_fix, sibling_to_borrow_from);
+                        } else if let Some(sibling_to_merge_to) =
+                            inner::find_sibling_to_merge_to(nodes, node_to_fix, m)
+                        {
+                            // no sibling to borrow from -> merge
+                            inner::merge_siblings(nodes, node_to_fix, sibling_to_merge_to);
+                        }
+                        let num_nodes = nodes.len();
+                        if num_nodes != 0 {
+                            self.update_bounding_envelope();
+                        }
+
+                        (true, num_nodes < m, res.2)
                     }
                 }
             }
@@ -410,6 +534,7 @@ impl<P, K: Default + Distance + Dimindex + PartialEq, const M: usize> SsTree<P, 
                 centroid: K::default(),
                 radius: 0f32,
                 links: SsNodeLinks::Leaf(Box::new(ArrayVec::new())),
+                marker: false,
             },
             height: 1,
             m,
@@ -417,7 +542,8 @@ impl<P, K: Default + Distance + Dimindex + PartialEq, const M: usize> SsTree<P, 
     }
 
     pub fn insert(&mut self, element: Element<P, K>) {
-        if let Some((new_child_1, new_child_2)) = self.root.insert(element, self.m) {
+        let mut tmp = Vec::new();
+        if let Some((new_child_1, new_child_2, _)) = self.root.insert(element, self.m, &mut tmp) {
             let mut nodes = ArrayVec::<_, M>::new();
             nodes.push(new_child_1);
             nodes.push(new_child_2);
@@ -426,10 +552,41 @@ impl<P, K: Default + Distance + Dimindex + PartialEq, const M: usize> SsTree<P, 
                 centroid,
                 radius,
                 links: SsNodeLinks::Inner(Box::new(nodes)),
+                marker: false,
             };
             self.height += 1;
         }
     }
+    pub fn insert_get_path(&mut self, element: Element<P, K>) -> Vec<u8> {
+        let mut path = Vec::new();
+        if let Some((new_child_1, new_child_2, pos)) = self.root.insert(element, self.m, &mut path)
+        {
+            let mut nodes = ArrayVec::<_, M>::new();
+            path.push(pos);
+
+            if new_child_1.marker {
+                path.push(0);
+            } else if new_child_2.marker {
+                path.push(1);
+            } else {
+                panic!("none of the children is marked");
+            }
+
+            nodes.push(new_child_1);
+            nodes.push(new_child_2);
+            let (centroid, radius) = inner::centroid_and_radius(&nodes);
+            self.root = SsNode {
+                centroid,
+                radius,
+                links: SsNodeLinks::Inner(Box::new(nodes)),
+                marker: false,
+            };
+            self.height += 1;
+        }
+        path.reverse();
+        path
+    }
+
     #[allow(clippy::overly_complex_bool_expr)]
     pub fn delete(&mut self, point: &K) {
         let (_deleted, _violiates_invariant) = self.root.delete(point, self.m);
@@ -468,6 +625,18 @@ impl<P, K: Default + Distance + Dimindex + PartialEq, const M: usize> SsTree<P, 
 
     pub fn get_by_path<'a>(&'a self, path: &[u8]) -> &'a Element<P, K> {
         self.root.get_element_by_path(path)
+    }
+    pub fn remove_by_path<'a>(&mut self, path: &[u8]) -> Element<P, K> {
+        let (_deleted, _violiates_invariant, element) =
+            self.root.delete_element_by_path(path, self.m);
+
+        match &mut self.root.links {
+            SsNodeLinks::Inner(nodes) if nodes.len() == 1 => {
+                self.root = nodes.pop().unwrap();
+            }
+            _ => (),
+        }
+        element
     }
 }
 
