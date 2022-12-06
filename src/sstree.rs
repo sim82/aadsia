@@ -348,7 +348,6 @@ impl<P, K: Default + Dimindex + Distance + PartialEq, const M: usize> SsNode<P, 
         match &mut self.links {
             SsNodeLinks::Leaf(elements) => {
                 let i = path[0] as usize;
-
                 let element = elements.remove(i);
                 let num_elements = elements.len();
                 if num_elements != 0 {
@@ -361,8 +360,9 @@ impl<P, K: Default + Dimindex + Distance + PartialEq, const M: usize> SsNode<P, 
                 let mut deleted = false;
 
                 let i = path[0] as usize;
+
                 let child_node = &mut nodes[i];
-                let res = child_node.delete_element_by_path(&path[0..], m);
+                let res = child_node.delete_element_by_path(&path[1..], m);
                 deleted = res.0;
                 let violates_invariants = res.1;
                 // println!("{:?} {:?}", deleted, violates_invariants);
@@ -626,7 +626,7 @@ impl<P, K: Default + Distance + Dimindex + PartialEq, const M: usize> SsTree<P, 
     pub fn get_by_path<'a>(&'a self, path: &[u8]) -> &'a Element<P, K> {
         self.root.get_element_by_path(path)
     }
-    pub fn remove_by_path<'a>(&mut self, path: &[u8]) -> Element<P, K> {
+    pub fn remove_by_path(&mut self, path: &[u8]) -> Element<P, K> {
         let (_deleted, _violiates_invariant, element) =
             self.root.delete_element_by_path(path, self.m);
 
