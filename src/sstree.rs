@@ -222,6 +222,11 @@ impl<P, K: Default + Dimindex + Distance + PartialEq, const M: usize> SsNode<P, 
                         children.push(new_child_1);
                         children.push(new_child_2);
                     } else {
+                        path.push(pos);
+
+                        for child in children.iter_mut() {
+                            child.marker = false;
+                        }
                         let mut nodes_to_split: Vec<_> = children
                             .drain(..)
                             .chain(std::iter::once(new_child_1))

@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use aadsia::sstree::{Dimindex, Distance, Element, SsTree};
 use eframe::epi;
-use egui::{emath, Color32, Frame, Pos2, Rect, Sense, Shape, Stroke};
+use egui::{emath, Color32, Frame, Pos2, Rect, Sense, Shape, Stroke, Vec2};
 use rand::Rng;
 
 struct Select {
@@ -35,23 +35,29 @@ impl Select {
 }
 
 impl Drag {
-    fn update<P, K: Distance + Dimindex + PartialEq + Default, const M: usize>(
+    fn update<
+        P: Clone + PartialEq,
+        K: Distance + Dimindex + PartialEq + Default,
+        const M: usize,
+    >(
         &mut self,
         pos: Pos2,
         tree: &mut SsTree<P, K, M>,
     ) {
         let mut element = tree.remove_by_path(&self.path);
-
+        let payload = element.payload.clone();
         let d = pos - self.last_pos;
         element.center[0] += d.x;
         element.center[1] += d.y;
         self.last_pos = pos;
         self.path = tree.insert_get_path(element);
+        let p = tree.get_by_path(&self.path).payload.clone();
+        assert!(p == payload);
     }
 }
 
-const M: usize = 32;
-const LOWER_M: usize = 16;
+const M: usize = 8;
+const LOWER_M: usize = M / 2;
 
 #[derive(Default, PartialEq)]
 enum Mode {
@@ -229,6 +235,7 @@ impl MyEguiApp {
         if changed {
             self.shapes.clear();
             draw_tree(
+                painter.clip_rect(),
                 &mut self.shapes,
                 &self.tree.root,
                 self.max_depth,
@@ -303,6 +310,7 @@ const COLORS: [Color32; 9] = [
 ];
 
 fn draw_tree<const M: usize>(
+    bounds: Rect,
     shapes: &mut Vec<Shape>,
     node: &aadsia::sstree::SsNode<u32, [f32; 2], M>,
     max_level: usize,
@@ -313,6 +321,10 @@ fn draw_tree<const M: usize>(
     let mut element_color = 0;
     while let Some((node, level)) = stack.pop() {
         if level > max_level {
+            continue;
+        }
+
+        if !overlaps(bounds, node.centroid, node.radius) {
             continue;
         }
 
@@ -354,18 +366,41 @@ fn draw_tree<const M: usize>(
     }
 }
 
+fn overlaps(bounds: Rect, centroid: [f32; 2], radius: f32) -> bool {
+    // being cheap: approximate circle by square...
+    let centroid: Vec2 = centroid.into();
+    let r = Vec2::new(radius, radius);
+    let rect = Rect {
+        min: (centroid - r).to_pos2(),
+        max: (centroid + r).to_pos2(),
+    };
+    bounds.intersects(rect)
+}
+
 fn main() {
     let mut tree = SsTree::new(LOWER_M);
     let mut rng = rand::thread_rng();
 
-    for i in 0..1000000 {
-        tree.insert(Element::new(
-            [rng.gen_range(200.0..60000.0), rng.gen_range(200.0..60000.0)],
-            5.0,
-            i,
-        ));
+    if !false {
+        for _ in 0..10 {
+            println!("insert ...");
+            for i in 0..1000000 {
+                tree.insert(Element::new(
+                    [rng.gen_range(200.0..9000.0), rng.gen_range(200.0..90000.0)],
+                    5.0,
+                    i,
+                ));
+            }
+        }
+    } else {
+        for i in 0..1000 {
+            tree.insert(Element::new(
+                [rng.gen_range(200.0..600.0), rng.gen_range(200.0..600.0)],
+                5.0,
+                i,
+            ));
+        }
     }
-
     let app = MyEguiApp {
         shapes: Vec::new(),
         tree,
