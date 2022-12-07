@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use aadsia::sstree::{Dimindex, Distance, Element, SsTree};
+use aadsia::sstree::{DimIndex, Distance, Element, NodePath, SsTree};
 use eframe::epi;
 use egui::{emath, Color32, Frame, Pos2, Rect, Sense, Shape, Stroke, Vec2};
 use rand::Rng;
@@ -12,7 +12,7 @@ struct Select {
 
 #[derive(Debug)]
 struct Drag {
-    path: Vec<u8>,
+    path: NodePath,
     last_pos: Pos2,
 }
 
@@ -37,7 +37,7 @@ impl Select {
 impl Drag {
     fn update<
         P: Clone + PartialEq,
-        K: Distance + Dimindex + PartialEq + Default,
+        K: Distance + DimIndex + PartialEq + Default,
         const M: usize,
     >(
         &mut self,
